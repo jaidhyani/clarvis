@@ -4,7 +4,7 @@ import { query } from '@anthropic-ai/claude-agent-sdk'
 const activeQueries = new Map()
 
 export function createQueryRunner(sessionId, options, callbacks) {
-  const { onMessage, onPermissionRequest, onError, onComplete } = callbacks
+  const { onMessage, onPermissionRequest, onPermissionResolved, onError, onComplete } = callbacks
 
   const abortController = new AbortController()
   const pendingPermissions = new Map()
@@ -22,7 +22,17 @@ export function createQueryRunner(sessionId, options, callbacks) {
 
     // Wait for response from UI
     return new Promise((resolve) => {
-      pendingPermissions.set(requestId, resolve)
+      pendingPermissions.set(requestId, (decision) => {
+        // Notify UI that permission was resolved
+        onPermissionResolved?.({
+          requestId,
+          toolName,
+          input,
+          decision: decision.behavior,
+          message: decision.message
+        })
+        resolve(decision)
+      })
     })
   }
 
@@ -43,7 +53,9 @@ export function createQueryRunner(sessionId, options, callbacks) {
         canUseTool,
         includePartialMessages: true,
         settingSources: options.settingSources || ['project'],
-        systemPrompt: options.systemPrompt || { type: 'preset', preset: 'claude_code' }
+        systemPrompt: options.systemPrompt || { type: 'preset', preset: 'claude_code' },
+        // Replay conversation history when resuming a session
+        extraArgs: options.resume ? { 'replay-user-messages': null } : undefined
       }
 
       const response = query({

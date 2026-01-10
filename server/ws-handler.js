@@ -1,5 +1,5 @@
 import { validateToken } from './auth.js'
-import { getAllSessions, getSession, saveSession, updateSession, deleteSession, discoverProjects } from './sessions.js'
+import { getAllSessions, getSession, saveSession, updateSession, deleteSession, discoverProjects, loadSessionHistory } from './sessions.js'
 import { createQueryRunner, interruptQuery, getSupportedModels, getSupportedCommands, getActiveQuery } from './sdk-bridge.js'
 
 // Track WebSocket connections by sessionId for broadcasting
@@ -165,6 +165,12 @@ async function handleMessage(ws, message, config, subscribedSessions) {
           // Extract session_id from init message for SDK resume
           if (sdkMessage.type === 'system' && sdkMessage.subtype === 'init') {
             updateSession(sid, { sdkSessionId: sdkMessage.session_id })
+            // Notify frontend so it can update local session state
+            broadcast(sid, {
+              type: 'session_sdk_id',
+              sessionId: sid,
+              sdkSessionId: sdkMessage.session_id
+            })
           }
         },
         onPermissionRequest: (request) => {
@@ -175,6 +181,20 @@ async function handleMessage(ws, message, config, subscribedSessions) {
             ...request
           })
           broadcast(sid, { type: 'session_status', sessionId: sid, status: 'waiting_permission' })
+        },
+        onPermissionResolved: (resolution) => {
+          // Send permission resolution as a message so it appears in chat history
+          broadcast(sid, {
+            type: 'message',
+            sessionId: sid,
+            message: {
+              type: 'permission',
+              toolName: resolution.toolName,
+              input: resolution.input,
+              decision: resolution.decision,
+              decisionMessage: resolution.message
+            }
+          })
         },
         onError: (error) => {
           updateSession(sid, { status: 'error' })
@@ -207,6 +227,21 @@ async function handleMessage(ws, message, config, subscribedSessions) {
 
       // Send session info
       send(ws, { type: 'session_info', session })
+      break
+    }
+
+    case 'get_history': {
+      const { sessionId } = message
+      const session = getSession(sessionId)
+
+      if (!session) {
+        send(ws, { type: 'error', error: 'Session not found' })
+        return
+      }
+
+      // Load history from SDK's JSONL files
+      const history = loadSessionHistory(session)
+      send(ws, { type: 'history', sessionId, messages: history })
       break
     }
 
@@ -244,7 +279,7 @@ async function handleMessage(ws, message, config, subscribedSessions) {
 
         updateSession(sessionId, { status: 'running' })
         broadcast(sessionId, { type: 'session_status', sessionId, status: 'running' })
-        send(ws, { type: 'permission_resolved', requestId })
+        send(ws, { type: 'permission_resolved', sessionId, requestId })
       } else {
         send(ws, { type: 'error', error: 'Permission request not found' })
       }
@@ -280,6 +315,17 @@ async function handleMessage(ws, message, config, subscribedSessions) {
       const { sessionId } = message
       const success = deleteSession(sessionId)
       send(ws, { type: 'session_deleted', sessionId, success })
+      break
+    }
+
+    case 'rename_session': {
+      const { sessionId, name } = message
+      const updated = updateSession(sessionId, { name })
+      if (updated) {
+        send(ws, { type: 'session_renamed', sessionId, name })
+      } else {
+        send(ws, { type: 'error', error: 'Session not found' })
+      }
       break
     }
 

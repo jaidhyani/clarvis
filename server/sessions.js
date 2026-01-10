@@ -72,6 +72,44 @@ export function deleteSession(sessionId) {
   return true
 }
 
+// Load message history from SDK's JSONL files
+export function loadSessionHistory(session) {
+  if (!session?.sdkSessionId || !session?.projectPath) {
+    return []
+  }
+
+  // SDK stores sessions in ~/.claude/projects/ with path encoded as directory name
+  const encodedPath = session.projectPath.replace(/\//g, '-')
+  const sdkProjectDir = join(homedir(), '.claude', 'projects', encodedPath)
+  const historyFile = join(sdkProjectDir, `${session.sdkSessionId}.jsonl`)
+
+  if (!existsSync(historyFile)) {
+    return []
+  }
+
+  try {
+    const content = readFileSync(historyFile, 'utf-8')
+    const lines = content.trim().split('\n').filter(Boolean)
+    const messages = []
+
+    for (const line of lines) {
+      try {
+        const entry = JSON.parse(line)
+        // Only include user and assistant messages, skip queue-operations and other internal types
+        if (entry.type === 'user' || entry.type === 'assistant') {
+          messages.push(entry)
+        }
+      } catch {
+        // Skip malformed lines
+      }
+    }
+
+    return messages
+  } catch {
+    return []
+  }
+}
+
 export function discoverProjects(projectsRoot) {
   if (!existsSync(projectsRoot)) {
     return []

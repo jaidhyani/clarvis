@@ -1,8 +1,9 @@
-import { h, render, Component } from './lib/preact.module.js'
-import { useState, useEffect, useCallback, useRef } from './lib/preact-hooks.module.js'
-import htm from './lib/htm.module.js'
+import { h, render } from 'preact'
+import { useState, useEffect, useCallback, useRef } from 'preact/hooks'
+import htm from 'htm'
 import { createWebSocket } from './ws.js'
 
+// Bind htm to preact's h function
 const html = htm.bind(h)
 
 // Connection states
@@ -24,9 +25,9 @@ function App() {
   const [showNewSessionModal, setShowNewSessionModal] = useState(false)
   const [permissionRequests, setPermissionRequests] = useState({}) // sessionId -> request
   const [sidebarOpen, setSidebarOpen] = useState(false)
-
   const wsRef = useRef(null)
   const messagesEndRef = useRef(null)
+  const seenMessageIds = useRef(new Map()) // sessionId -> Set of message uuids we've processed
 
   // Scroll to bottom when messages change
   useEffect(() => {
@@ -86,16 +87,61 @@ function App() {
         setActiveSessionId(msg.sessionId)
         break
 
-      case 'message':
-        setMessages(prev => ({
-          ...prev,
-          [msg.sessionId]: [...(prev[msg.sessionId] || []), msg.message]
-        }))
+      case 'message': {
+        const sdkMsg = msg.message
+        const sessionId = msg.sessionId
+
+        // Skip init messages - not useful to display
+        if (sdkMsg.type === 'system' && sdkMsg.subtype === 'init') {
+          break
+        }
+
+        // Get or create the set of seen message IDs for this session
+        if (!seenMessageIds.current.has(sessionId)) {
+          seenMessageIds.current.set(sessionId, new Set())
+        }
+        const seen = seenMessageIds.current.get(sessionId)
+
+        // If message has a uuid and we've seen it, skip (handles replays/duplicates)
+        if (sdkMsg.uuid && seen.has(sdkMsg.uuid)) {
+          break
+        }
+
+        // Mark as seen
+        if (sdkMsg.uuid) {
+          seen.add(sdkMsg.uuid)
+        }
+
+        setMessages(prev => {
+          const sessionMsgs = prev[sessionId] || []
+
+          // For user messages from SDK, check if we have a pending local version to replace
+          if (sdkMsg.type === 'user' && sdkMsg.uuid) {
+            const pendingIdx = sessionMsgs.findIndex(m => m._pending && m.type === 'user')
+            if (pendingIdx !== -1) {
+              // Replace pending with confirmed SDK message
+              const updated = [...sessionMsgs]
+              updated[pendingIdx] = sdkMsg
+              return { ...prev, [sessionId]: updated }
+            }
+          }
+
+          // Otherwise just append
+          return { ...prev, [sessionId]: [...sessionMsgs, sdkMsg] }
+        })
         break
+      }
 
       case 'session_status':
         setSessions(prev => prev.map(s =>
           s.id === msg.sessionId ? { ...s, status: msg.status } : s
+        ))
+        break
+
+      case 'session_sdk_id':
+        // Update local session with SDK session ID for resume support
+        setSessions(prev => prev.map(s =>
+          s.id === msg.sessionId ? { ...s, sdkSessionId: msg.sdkSessionId } : s
         ))
         break
 
@@ -109,7 +155,7 @@ function App() {
       case 'permission_resolved':
         setPermissionRequests(prev => {
           const next = { ...prev }
-          delete next[activeSessionId]
+          delete next[msg.sessionId]
           return next
         })
         break
@@ -123,11 +169,49 @@ function App() {
         setProjects(prev => [...prev, msg.project].sort((a, b) => a.name.localeCompare(b.name)))
         break
 
+      case 'session_deleted':
+        setSessions(prev => prev.filter(s => s.id !== msg.sessionId))
+        setMessages(prev => {
+          const next = { ...prev }
+          delete next[msg.sessionId]
+          return next
+        })
+        break
+
+      case 'session_renamed':
+        setSessions(prev => prev.map(s =>
+          s.id === msg.sessionId ? { ...s, name: msg.name } : s
+        ))
+        break
+
+      case 'history': {
+        // Received historical messages from SDK storage
+        const sessionId = msg.sessionId
+        const history = msg.messages || []
+
+        // Initialize or reset the seen message IDs for this session
+        if (!seenMessageIds.current.has(sessionId)) {
+          seenMessageIds.current.set(sessionId, new Set())
+        }
+        const seen = seenMessageIds.current.get(sessionId)
+
+        // Mark all history messages as seen and add their uuids
+        for (const histMsg of history) {
+          if (histMsg.uuid) {
+            seen.add(histMsg.uuid)
+          }
+        }
+
+        // Set the messages for this session
+        setMessages(prev => ({ ...prev, [sessionId]: history }))
+        break
+      }
+
       case 'error':
         console.error('Server error:', msg.error)
         break
     }
-  }, [activeSessionId])
+  }, [])
 
   // Auto-connect if we have a stored token
   useEffect(() => {
@@ -145,6 +229,17 @@ function App() {
 
     const session = sessions.find(s => s.id === activeSessionId)
     if (!session) return
+
+    // Add user message locally for immediate feedback (marked as pending)
+    // Will be replaced when SDK confirms with the real message (with uuid)
+    setMessages(prev => ({
+      ...prev,
+      [activeSessionId]: [...(prev[activeSessionId] || []), {
+        type: 'user',
+        message: { content: [{ type: 'text', text: prompt }] },
+        _pending: true
+      }]
+    }))
 
     wsRef.current.send({
       type: 'query',
@@ -180,13 +275,27 @@ function App() {
   }, [])
 
   // Handle permission response
-  const handlePermission = useCallback((sessionId, requestId, decision) => {
+  const handlePermission = useCallback((sessionId, requestId, decision, input) => {
     wsRef.current?.send({
       type: 'permission',
       sessionId,
       requestId,
-      decision
+      decision,
+      updatedInput: decision === 'allow' ? input : undefined
     })
+  }, [])
+
+  // Delete session
+  const deleteSession = useCallback((sessionId) => {
+    wsRef.current?.send({ type: 'delete_session', sessionId })
+    if (activeSessionId === sessionId) {
+      setActiveSessionId(null)
+    }
+  }, [activeSessionId])
+
+  // Rename session
+  const renameSession = useCallback((sessionId, name) => {
+    wsRef.current?.send({ type: 'rename_session', sessionId, name })
   }, [])
 
   // Auth screen
@@ -206,8 +315,15 @@ function App() {
       <${Sidebar}
         sessions=${sessions}
         activeSessionId=${activeSessionId}
-        onSelectSession=${(id) => { setActiveSessionId(id); setSidebarOpen(false); }}
+        onSelectSession=${(id) => {
+          setActiveSessionId(id)
+          setSidebarOpen(false)
+          // Request history from server (reads from SDK's JSONL files)
+          wsRef.current?.send({ type: 'get_history', sessionId: id })
+        }}
         onNewSession=${() => setShowNewSessionModal(true)}
+        onDeleteSession=${deleteSession}
+        onRenameSession=${renameSession}
         isOpen=${sidebarOpen}
         connectionState=${connectionState}
       />
@@ -223,12 +339,13 @@ function App() {
           <${MessageStream}
             messages=${activeMessages}
             messagesEndRef=${messagesEndRef}
+            isLoading=${activeSession.status === 'running' && !activePermission}
           />
 
           ${activePermission && html`
             <${PermissionCard}
               request=${activePermission}
-              onAllow=${() => handlePermission(activeSessionId, activePermission.requestId, 'allow')}
+              onAllow=${() => handlePermission(activeSessionId, activePermission.requestId, 'allow', activePermission.input)}
               onDeny=${() => handlePermission(activeSessionId, activePermission.requestId, 'deny')}
             />
           `}
@@ -300,7 +417,7 @@ function AuthScreen({ onSubmit, error }) {
 }
 
 // Sidebar component
-function Sidebar({ sessions, activeSessionId, onSelectSession, onNewSession, isOpen, connectionState }) {
+function Sidebar({ sessions, activeSessionId, onSelectSession, onNewSession, onDeleteSession, onRenameSession, isOpen, connectionState }) {
   return html`
     <aside class="sidebar ${isOpen ? 'open' : ''}">
       <div class="sidebar-header">
@@ -318,6 +435,8 @@ function Sidebar({ sessions, activeSessionId, onSelectSession, onNewSession, isO
               session=${session}
               isActive=${session.id === activeSessionId}
               onClick=${() => onSelectSession(session.id)}
+              onDelete=${() => onDeleteSession(session.id)}
+              onRename=${(name) => onRenameSession(session.id, name)}
             />
           `)}
         </div>
@@ -327,15 +446,64 @@ function Sidebar({ sessions, activeSessionId, onSelectSession, onNewSession, isO
 }
 
 // Session card component
-function SessionCard({ session, isActive, onClick }) {
+function SessionCard({ session, isActive, onClick, onDelete, onRename }) {
+  const [showMenu, setShowMenu] = useState(false)
+  const [isRenaming, setIsRenaming] = useState(false)
+  const [newName, setNewName] = useState(session.name)
+
+  const handleContextMenu = (e) => {
+    e.preventDefault()
+    setShowMenu(true)
+  }
+
+  const handleRename = () => {
+    if (newName.trim() && newName !== session.name) {
+      onRename(newName.trim())
+    }
+    setIsRenaming(false)
+    setShowMenu(false)
+  }
+
+  const handleDelete = (e) => {
+    e.stopPropagation()
+    if (confirm('Delete this session?')) {
+      onDelete()
+    }
+    setShowMenu(false)
+  }
+
   return html`
-    <div class="session-card ${isActive ? 'active' : ''}" onClick=${onClick}>
+    <div
+      class="session-card ${isActive ? 'active' : ''}"
+      onClick=${onClick}
+      onContextMenu=${handleContextMenu}
+    >
       <div class="session-card-header">
-        <span class="session-card-name">${session.name}</span>
+        ${isRenaming ? html`
+          <input
+            type="text"
+            class="session-rename-input"
+            value=${newName}
+            onInput=${(e) => setNewName(e.target.value)}
+            onBlur=${handleRename}
+            onKeyDown=${(e) => e.key === 'Enter' && handleRename()}
+            onClick=${(e) => e.stopPropagation()}
+            autofocus
+          />
+        ` : html`
+          <span class="session-card-name">${session.name}</span>
+        `}
         <span class="session-card-status ${session.status}"></span>
       </div>
       ${session.lastMessagePreview && html`
         <div class="session-card-preview">${session.lastMessagePreview}</div>
+      `}
+      ${showMenu && html`
+        <div class="session-menu" onClick=${(e) => e.stopPropagation()}>
+          <button onClick=${() => { setIsRenaming(true); setShowMenu(false); }}>Rename</button>
+          <button onClick=${handleDelete} class="danger">Delete</button>
+          <button onClick=${() => setShowMenu(false)}>Cancel</button>
+        </div>
       `}
     </div>
   `
@@ -355,12 +523,19 @@ function MainHeader({ session, onMenuClick, connectionState }) {
 }
 
 // Message stream component
-function MessageStream({ messages, messagesEndRef }) {
+function MessageStream({ messages, messagesEndRef, isLoading }) {
   return html`
     <div class="message-stream">
       ${messages.map((msg, i) => html`
         <${Message} key=${i} message=${msg} />
       `)}
+      ${isLoading && html`
+        <div class="typing-indicator">
+          <span></span>
+          <span></span>
+          <span></span>
+        </div>
+      `}
       <div ref=${messagesEndRef}></div>
     </div>
   `
@@ -373,21 +548,38 @@ function Message({ message }) {
     const text = Array.isArray(content)
       ? content.filter(c => c.type === 'text').map(c => c.text).join('\n')
       : content
+    if (!text) return null
     return html`<div class="message message-user">${text}</div>`
   }
 
   if (message.type === 'assistant') {
     const content = message.message?.content
+    // Only extract text, tool_use blocks will be handled below
     const text = Array.isArray(content)
       ? content.filter(c => c.type === 'text').map(c => c.text).join('\n')
       : content
+    // Don't render empty assistant messages
+    if (!text) return null
     return html`<div class="message message-assistant">${text}</div>`
   }
 
+  // Hide init messages - they're confusing after the user's first prompt
   if (message.type === 'system' && message.subtype === 'init') {
+    return null
+  }
+
+  // Permission resolution message
+  if (message.type === 'permission') {
+    const allowed = message.decision === 'allow'
     return html`
-      <div class="message" style="color: var(--text-muted); font-size: 12px;">
-        Session started • Model: ${message.model} • ${message.tools?.length || 0} tools available
+      <div class="message message-system" style="display: flex; align-items: center; gap: 8px;">
+        <span style="color: ${allowed ? 'var(--accent-success)' : 'var(--accent-error)'}">
+          ${allowed ? '✓' : '✗'}
+        </span>
+        <span>
+          ${allowed ? 'Allowed' : 'Denied'}: ${message.toolName}
+          ${message.decisionMessage ? ` - ${message.decisionMessage}` : ''}
+        </span>
       </div>
     `
   }
@@ -395,20 +587,21 @@ function Message({ message }) {
   // Tool calls are rendered inline with content blocks
   if (message.message?.content) {
     const content = message.message.content
-    return html`
-      ${content.map((block, i) => {
-        if (block.type === 'text') {
-          return html`<div key=${i} class="message message-assistant">${block.text}</div>`
-        }
-        if (block.type === 'tool_use') {
-          return html`<${ToolCall} key=${i} name=${block.name} input=${block.input} />`
-        }
-        if (block.type === 'tool_result') {
-          return html`<${ToolResult} key=${i} content=${block.content} />`
-        }
-        return null
-      })}
-    `
+    const rendered = content.map((block, i) => {
+      if (block.type === 'text' && block.text?.trim()) {
+        return html`<div key=${i} class="message message-assistant">${block.text}</div>`
+      }
+      if (block.type === 'tool_use') {
+        return html`<${ToolCall} key=${i} name=${block.name} input=${block.input} />`
+      }
+      if (block.type === 'tool_result') {
+        return html`<${ToolResult} key=${i} content=${block.content} />`
+      }
+      return null
+    }).filter(Boolean)
+
+    if (rendered.length === 0) return null
+    return html`${rendered}`
   }
 
   return null
@@ -442,7 +635,10 @@ function ToolResult({ content }) {
 
   const text = Array.isArray(content)
     ? content.filter(c => c.type === 'text').map(c => c.text).join('\n')
-    : String(content)
+    : String(content || '')
+
+  // Don't render empty results
+  if (!text.trim()) return null
 
   const preview = text.slice(0, 100) + (text.length > 100 ? '...' : '')
 

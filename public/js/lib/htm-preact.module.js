@@ -1,4 +1,1 @@
-/* esm.sh - htm@3.1.1/preact */
-import "/htm@3.1.1/es2022/htm.mjs";
-import "/preact?target=es2022";
-export * from "/htm@3.1.1/es2022/preact.mjs";
+import{h as r,Component as o,render as t}from"preact";export{h,render,Component}from"preact";import e from"htm";var m=e.bind(r);export{m as html};
