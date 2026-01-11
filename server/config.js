@@ -2,11 +2,13 @@ import { readFileSync, existsSync } from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'
 
-const CONFIG_PATH = join(homedir(), '.clarvis', 'config.json')
+const DATA_DIR = process.env.CLARVIS_DATA_DIR || join(homedir(), '.clarvis')
+const CONFIG_PATH = join(DATA_DIR, 'config.json')
 
 const DEFAULTS = {
   port: 3000,
-  projectsRoot: join(homedir(), 'projects')
+  projectsRoot: join(homedir(), 'projects'),
+  dataDir: DATA_DIR
 }
 
 function parseArgs(args) {
@@ -67,4 +69,4 @@ export function loadConfig(argv = process.argv.slice(2)) {
   return config
 }
 
-export { CONFIG_PATH, DEFAULTS }
+export { CONFIG_PATH, DATA_DIR, DEFAULTS }

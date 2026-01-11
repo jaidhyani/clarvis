@@ -1,8 +1,9 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSync } from 'fs'
 import { homedir } from 'os'
 import { join, dirname } from 'path'
+import { DATA_DIR } from './config.js'
 
-const SESSIONS_PATH = join(homedir(), '.clarvis', 'sessions.json')
+const SESSIONS_PATH = join(DATA_DIR, 'sessions.json')
 
 function ensureDir(filePath) {
   const dir = dirname(filePath)
