@@ -9,9 +9,9 @@
   - `--projects-root` / `CLARVIS_PROJECTS_ROOT` / `config.projectsRoot` (default: ~/projects)
   - Config file: `~/.clarvis/config.json`
 
-- **Auth**: Token-based authentication
-  - Auto-generates token on first run
-  - Stored in `~/.clarvis/auth-token`
+- **Auth**: Password-based authentication
+  - Set via `CLARVIS_PASSWORD` env var
+  - Falls back to random generated password (printed to terminal)
   - Required for WebSocket connections
 
 - **HTTP server**: Static file serving from `public/`
@@ -38,7 +38,7 @@
 
 - **Preact + htm**: No build step required
 - **WebSocket client**: Auto-reconnect with exponential backoff
-- **Auth screen**: Token entry with error handling
+- **Auth screen**: Password entry with error handling
 - **Message stream**: Renders SDK messages
 - **Tool calls**: Collapsible display
 - **Permission cards**: Allow/deny UI

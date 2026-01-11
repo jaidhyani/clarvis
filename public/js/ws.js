@@ -1,6 +1,6 @@
 // WebSocket client with auto-reconnect
 
-export function createWebSocket(token, handlers) {
+export function createWebSocket(password, handlers) {
   let ws = null
   let reconnectAttempts = 0
   let reconnectTimeout = null
@@ -9,7 +9,7 @@ export function createWebSocket(token, handlers) {
 
   function connect() {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const url = `${protocol}//${window.location.host}?token=${token}`
+    const url = `${protocol}//${window.location.host}?password=${password}`
 
     ws = new WebSocket(url)
 

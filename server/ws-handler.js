@@ -1,4 +1,4 @@
-import { validateToken } from './auth.js'
+import { validatePassword } from './auth.js'
 import { getAllSessions, getSession, saveSession, updateSession, deleteSession, discoverProjects, loadSessionHistory } from './sessions.js'
 import { createQueryRunner, interruptQuery, getSupportedModels, getSupportedCommands, getActiveQuery } from './sdk-bridge.js'
 
@@ -41,12 +41,11 @@ function send(ws, message) {
 }
 
 export function handleConnection(ws, req, config) {
-  // Extract token from query string
   const url = new URL(req.url, `http://${req.headers.host}`)
-  const token = url.searchParams.get('token')
+  const password = url.searchParams.get('password')
 
-  if (!validateToken(token)) {
-    send(ws, { type: 'error', error: 'Invalid or missing authentication token' })
+  if (!validatePassword(password)) {
+    send(ws, { type: 'error', error: 'Invalid or missing password' })
     ws.close(4001, 'Unauthorized')
     return
   }

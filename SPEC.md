@@ -71,7 +71,7 @@ Clarvis is a web UI that wraps the Claude Agent SDK to provide multi-session Cla
 | File | Purpose |
 |------|---------|
 | `~/.clarvis/config.json` | Server configuration |
-| `~/.clarvis/auth-token` | Authentication token |
+| `CLARVIS_PASSWORD` env var | Authentication password (or random generated on startup) |
 | `~/.clarvis/sessions.json` | Lightweight session index (id, name, projectPath, lastActivity) |
 
 ## WebSocket Protocol

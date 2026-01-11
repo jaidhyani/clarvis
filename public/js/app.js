@@ -16,7 +16,7 @@ const ConnectionState = {
 
 // Main App component
 function App() {
-  const [token, setToken] = useState(() => localStorage.getItem('clarvis_token') || '')
+  const [password, setPassword] = useState(() => localStorage.getItem('clarvis_password') || '')
   const [connectionState, setConnectionState] = useState(ConnectionState.DISCONNECTED)
   const [sessions, setSessions] = useState([])
   const [activeSessionId, setActiveSessionId] = useState(null)
@@ -37,17 +37,17 @@ function App() {
   }, [messages, activeSessionId])
 
   // Connect to WebSocket
-  const connect = useCallback((authToken) => {
+  const connect = useCallback((authPassword) => {
     if (wsRef.current) {
       wsRef.current.close()
     }
 
     setConnectionState(ConnectionState.CONNECTING)
 
-    wsRef.current = createWebSocket(authToken, {
+    wsRef.current = createWebSocket(authPassword, {
       onConnect: () => {
         setConnectionState(ConnectionState.CONNECTED)
-        localStorage.setItem('clarvis_token', authToken)
+        localStorage.setItem('clarvis_password', authPassword)
         // Request initial data
         wsRef.current.send({ type: 'list_sessions' })
         wsRef.current.send({ type: 'list_projects' })
@@ -57,8 +57,8 @@ function App() {
       },
       onAuthError: () => {
         setConnectionState(ConnectionState.AUTH_ERROR)
-        localStorage.removeItem('clarvis_token')
-        setToken('')
+        localStorage.removeItem('clarvis_password')
+        setPassword('')
       },
       onReconnecting: () => {
         setConnectionState(ConnectionState.CONNECTING)
@@ -213,10 +213,10 @@ function App() {
     }
   }, [])
 
-  // Auto-connect if we have a stored token
+  // Auto-connect if we have a stored password
   useEffect(() => {
-    if (token) {
-      connect(token)
+    if (password) {
+      connect(password)
     }
     return () => {
       wsRef.current?.close()
@@ -299,9 +299,9 @@ function App() {
   }, [])
 
   // Auth screen
-  if (connectionState === ConnectionState.AUTH_ERROR || (!token && connectionState === ConnectionState.DISCONNECTED)) {
+  if (connectionState === ConnectionState.AUTH_ERROR || (!password && connectionState === ConnectionState.DISCONNECTED)) {
     return html`<${AuthScreen}
-      onSubmit=${(t) => { setToken(t); connect(t); }}
+      onSubmit=${(p) => { setPassword(p); connect(p); }}
       error=${connectionState === ConnectionState.AUTH_ERROR}
     />`
   }
@@ -375,12 +375,12 @@ function App() {
 
 // Auth screen component
 function AuthScreen({ onSubmit, error }) {
-  const [token, setToken] = useState('')
+  const [password, setPassword] = useState('')
 
   const handleSubmit = (e) => {
     e.preventDefault()
-    if (token.trim()) {
-      onSubmit(token.trim())
+    if (password.trim()) {
+      onSubmit(password.trim())
     }
   }
 
@@ -388,22 +388,22 @@ function AuthScreen({ onSubmit, error }) {
     <div class="auth-screen">
       <div class="auth-card">
         <h1 class="auth-title">Clarvis</h1>
-        <p class="auth-subtitle">Enter your authentication token to connect</p>
+        <p class="auth-subtitle">Enter your password to connect</p>
 
         ${error && html`
           <div class="auth-error">
-            Invalid token. Please check and try again.
+            Invalid password. Please check and try again.
           </div>
         `}
 
         <form onSubmit=${handleSubmit}>
           <div class="form-group">
-            <label>Auth Token</label>
+            <label>Password</label>
             <input
-              type="text"
-              value=${token}
-              onInput=${(e) => setToken(e.target.value)}
-              placeholder="Paste token from terminal..."
+              type="password"
+              value=${password}
+              onInput=${(e) => setPassword(e.target.value)}
+              placeholder="Paste password from terminal..."
               autofocus
             />
           </div>

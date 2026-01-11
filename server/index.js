@@ -4,7 +4,7 @@ import { join, extname } from 'path'
 import { fileURLToPath } from 'url'
 import { WebSocketServer } from 'ws'
 import { loadConfig } from './config.js'
-import { ensureToken } from './auth.js'
+import { initPassword, ENV_VAR_NAME } from './auth.js'
 import { handleConnection } from './ws-handler.js'
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url))
@@ -59,14 +59,12 @@ function serveStatic(req, res) {
 
 function main() {
   const config = loadConfig()
-  const token = ensureToken()
+  const { password, wasGenerated } = initPassword()
 
-  // Create HTTP server
   const server = createServer((req, res) => {
     serveStatic(req, res)
   })
 
-  // Create WebSocket server
   const wss = new WebSocketServer({ server })
 
   wss.on('connection', (ws, req) => {
@@ -82,11 +80,15 @@ function main() {
     console.log(`  Local:    http://localhost:${config.port}`)
     console.log(`  Projects: ${config.projectsRoot}`)
     console.log('')
-    console.log('  Auth Token:')
-    console.log(`  ${token}`)
+    if (wasGenerated) {
+      console.log('  Password (generated):')
+    } else {
+      console.log(`  Password (from ${ENV_VAR_NAME}):`)
+    }
+    console.log(`  ${password}`)
     console.log('')
-    console.log('  Connect with token in query string:')
-    console.log(`  ws://localhost:${config.port}?token=${token}`)
+    console.log('  Connect with password in query string:')
+    console.log(`  ws://localhost:${config.port}?password=${password}`)
     console.log('')
   })
 }
