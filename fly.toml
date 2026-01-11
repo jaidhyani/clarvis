@@ -12,6 +12,7 @@ primary_region = 'lax'
   CLARVIS_DATA_DIR = '/data'
   CLARVIS_PORT = '3000'
   NODE_ENV = 'production'
+  NODE_OPTIONS = '--max-old-space-size=3072'
 
 [[mounts]]
   source = 'clarvis_data'
@@ -30,7 +31,6 @@ primary_region = 'lax'
     soft_limit = 80
 
 [[vm]]
-  memory = '512mb'
+  memory = '4gb'
   cpu_kind = 'shared'
-  cpus = 1
-  memory_mb = 512
+  cpus = 2
