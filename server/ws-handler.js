@@ -1,6 +1,9 @@
 import { validatePassword } from './auth.js'
 import { getAllSessions, getSession, saveSession, updateSession, deleteSession, discoverProjects, loadSessionHistory } from './sessions.js'
 import { createQueryRunner, interruptQuery, getSupportedModels, getSupportedCommands, getActiveQuery } from './sdk-bridge.js'
+import { existsSync } from 'fs'
+import { homedir, freemem, totalmem, cpus, loadavg } from 'os'
+import { join } from 'path'
 
 // Track WebSocket connections by sessionId for broadcasting
 const sessionConnections = new Map()
@@ -103,6 +106,39 @@ async function handleMessage(ws, message, config, subscribedSessions) {
     case 'get_commands': {
       const commands = await getSupportedCommands()
       send(ws, { type: 'commands', commands })
+      break
+    }
+
+    case 'get_status': {
+      const oauthPath = join(homedir(), '.claude', '.credentials.json')
+      const hasOAuth = existsSync(oauthPath)
+      const hasApiKey = !!process.env.ANTHROPIC_API_KEY
+
+      let authType = 'none'
+      if (hasOAuth) authType = 'oauth'
+      else if (hasApiKey) authType = 'api_key'
+
+      const totalMemory = totalmem()
+      const freeMemory = freemem()
+      const usedMemory = totalMemory - freeMemory
+      const cpuCount = cpus().length
+      const load = loadavg()
+
+      send(ws, {
+        type: 'status',
+        auth: {
+          type: authType,
+          hasOAuth,
+          hasApiKey
+        },
+        system: {
+          memoryUsed: usedMemory,
+          memoryTotal: totalMemory,
+          memoryPercent: Math.round((usedMemory / totalMemory) * 100),
+          cpuCount,
+          loadAvg: load[0]
+        }
+      })
       break
     }
 

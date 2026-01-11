@@ -25,6 +25,8 @@ function App() {
   const [showNewSessionModal, setShowNewSessionModal] = useState(false)
   const [permissionRequests, setPermissionRequests] = useState({}) // sessionId -> request
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [showStatusModal, setShowStatusModal] = useState(false)
+  const [statusData, setStatusData] = useState(null)
   const wsRef = useRef(null)
   const messagesEndRef = useRef(null)
   const seenMessageIds = useRef(new Map()) // sessionId -> Set of message uuids we've processed
@@ -207,6 +209,10 @@ function App() {
         break
       }
 
+      case 'status':
+        setStatusData(msg)
+        break
+
       case 'error':
         console.error('Server error:', msg.error)
         break
@@ -326,6 +332,10 @@ function App() {
         onRenameSession=${renameSession}
         isOpen=${sidebarOpen}
         connectionState=${connectionState}
+        onStatusClick=${() => {
+          wsRef.current?.send({ type: 'get_status' })
+          setShowStatusModal(true)
+        }}
       />
 
       <div class="main-content">
@@ -367,6 +377,13 @@ function App() {
           onSelect=${startNewSession}
           onClose=${() => setShowNewSessionModal(false)}
           onCreateProject=${(name) => wsRef.current?.send({ type: 'create_project', name })}
+        />
+      `}
+
+      ${showStatusModal && html`
+        <${StatusModal}
+          status=${statusData}
+          onClose=${() => setShowStatusModal(false)}
         />
       `}
     </div>
@@ -417,7 +434,7 @@ function AuthScreen({ onSubmit, error }) {
 }
 
 // Sidebar component
-function Sidebar({ sessions, activeSessionId, onSelectSession, onNewSession, onDeleteSession, onRenameSession, isOpen, connectionState }) {
+function Sidebar({ sessions, activeSessionId, onSelectSession, onNewSession, onDeleteSession, onRenameSession, isOpen, connectionState, onStatusClick }) {
   return html`
     <aside class="sidebar ${isOpen ? 'open' : ''}">
       <div class="sidebar-header">
@@ -440,6 +457,14 @@ function Sidebar({ sessions, activeSessionId, onSelectSession, onNewSession, onD
             />
           `)}
         </div>
+      </div>
+      <div class="sidebar-footer">
+        <button class="btn btn-icon status-button" onClick=${onStatusClick} title="Server Status">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+        </button>
       </div>
     </aside>
   `
@@ -810,6 +835,75 @@ function NewSessionModal({ projects, onSelect, onClose, onCreateProject }) {
         </div>
         <div class="modal-footer">
           <button class="btn btn-secondary" onClick=${onClose}>Cancel</button>
+        </div>
+      </div>
+    </div>
+  `
+}
+
+// Status modal component
+function StatusModal({ status, onClose }) {
+  const formatBytes = (bytes) => {
+    const gb = bytes / (1024 * 1024 * 1024)
+    return gb.toFixed(1) + ' GB'
+  }
+
+  const authLabels = {
+    oauth: 'Claude Pro/Max (OAuth)',
+    api_key: 'API Key',
+    none: 'Not configured'
+  }
+
+  return html`
+    <div class="modal-overlay" onClick=${(e) => e.target === e.currentTarget && onClose()}>
+      <div class="modal status-modal">
+        <div class="modal-header">
+          <h2 class="modal-title">Server Status</h2>
+        </div>
+        <div class="modal-body">
+          ${status ? html`
+            <div class="status-section">
+              <h3>Authentication</h3>
+              <div class="status-item">
+                <span class="status-label">Method</span>
+                <span class="status-value ${status.auth.type === 'none' ? 'status-warning' : 'status-ok'}">
+                  ${authLabels[status.auth.type]}
+                </span>
+              </div>
+              ${status.auth.type === 'none' && html`
+                <p class="status-hint">
+                  Run <code>fly ssh console</code> then <code>claude login</code> to authenticate.
+                </p>
+              `}
+            </div>
+
+            <div class="status-section">
+              <h3>System</h3>
+              <div class="status-item">
+                <span class="status-label">Memory</span>
+                <span class="status-value">
+                  ${formatBytes(status.system.memoryUsed)} / ${formatBytes(status.system.memoryTotal)}
+                  <span class="status-percent">(${status.system.memoryPercent}%)</span>
+                </span>
+              </div>
+              <div class="status-bar">
+                <div class="status-bar-fill" style="width: ${status.system.memoryPercent}%"></div>
+              </div>
+              <div class="status-item">
+                <span class="status-label">CPU Cores</span>
+                <span class="status-value">${status.system.cpuCount}</span>
+              </div>
+              <div class="status-item">
+                <span class="status-label">Load Average</span>
+                <span class="status-value">${status.system.loadAvg.toFixed(2)}</span>
+              </div>
+            </div>
+          ` : html`
+            <p style="color: var(--text-secondary)">Loading...</p>
+          `}
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" onClick=${onClose}>Close</button>
         </div>
       </div>
     </div>
