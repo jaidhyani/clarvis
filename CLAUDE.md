@@ -6,6 +6,8 @@
 ./start.sh              # Start server (loads .env from parent dirs)
 npm start               # Start server directly
 npm run dev             # Start with --watch for auto-reload
+./restart.sh            # Trigger restart (when using npm run dev)
+./restart.sh kill       # Hard kill server process
 npm test                # Run tests
 ```
 
@@ -34,6 +36,24 @@ public/
 Client sends: `query`, `resume`, `interrupt`, `permission`, `list_sessions`, `get_status`, `get_models`, `get_commands`
 
 Server sends: `message` (SDK passthrough), `permission_request`, `status`, `sessions`, `models`, `commands`, `error`
+
+### Query Message Format
+
+The `query` message supports two formats for the prompt:
+
+```javascript
+// Text only (legacy)
+{ type: 'query', sessionId, options: { prompt: 'string', cwd, name, resume } }
+
+// With images (content array)
+{ type: 'query', sessionId, options: { content: [...blocks], cwd, name, resume } }
+```
+
+Content blocks follow Anthropic's format:
+```javascript
+{ type: 'text', text: 'message' }
+{ type: 'image', source: { type: 'base64', media_type: 'image/png', data: '...' } }
+```
 
 ## Data & Auth
 

@@ -5,6 +5,7 @@ Web UI for the Claude Agent SDK. Manage multiple Claude Code sessions from your 
 ## Features
 
 - **Multi-session**: Run multiple Claude Code sessions across different projects
+- **Image support**: Paste images (Ctrl+V) or click attach to send images to Claude
 - **Mobile-friendly**: Responsive dark theme, works on phones
 - **No build step**: Preact + htm via ES modules, just run and go
 - **Thin wrapper**: Server passes SDK options through unchanged
@@ -60,6 +61,46 @@ Server (Node.js) ──── SDK query() ──── Claude Agent SDK
 ```
 
 The server is a thin bridge: it accepts SDK options from the frontend, streams messages back unchanged, and forwards permission requests.
+
+## Usage
+
+### Keyboard Shortcuts
+
+| Key | Action |
+|-----|--------|
+| `Enter` | Send message |
+| `Shift+Enter` | New line in message |
+| `Ctrl+V` | Paste image from clipboard |
+
+### Session Management
+
+- **New session**: Click "+ New Session" and select a project
+- **Switch sessions**: Click any session in the sidebar
+- **Rename/Delete**: Right-click a session for context menu
+
+### Images
+
+Attach images to your messages:
+- **Paste**: Copy an image and press `Ctrl+V` in the text area
+- **Upload**: Click the paperclip button to select files
+
+Supported formats: JPEG, PNG, GIF, WebP (max 20MB each).
+
+## Development
+
+```bash
+# Run with auto-restart on file changes
+npm run dev
+
+# Trigger restart (from another terminal)
+./restart.sh
+
+# Hard kill server
+./restart.sh kill
+
+# Run tests
+npm test
+```
 
 ## Requirements
 
