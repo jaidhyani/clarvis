@@ -1,10 +1,23 @@
 import { h, render } from 'preact'
 import { useState, useEffect, useCallback, useRef } from 'preact/hooks'
 import htm from 'htm'
+import { marked } from './lib/marked.esm.js'
 import { createWebSocket } from './ws.js'
 
 // Bind htm to preact's h function
 const html = htm.bind(h)
+
+// Configure marked for safe rendering
+marked.setOptions({
+  breaks: true,  // Convert \n to <br>
+  gfm: true      // GitHub Flavored Markdown
+})
+
+// Render markdown to HTML string
+function renderMarkdown(text) {
+  if (!text) return ''
+  return marked.parse(text)
+}
 
 // Connection states
 const ConnectionState = {
@@ -632,7 +645,7 @@ function Message({ message }) {
       : content
     // Don't render empty assistant messages
     if (!text) return null
-    return html`<div class="message message-assistant">${text}</div>`
+    return html`<div class="message message-assistant markdown-body" dangerouslySetInnerHTML=${{ __html: renderMarkdown(text) }}></div>`
   }
 
   // Hide init messages - they're confusing after the user's first prompt
@@ -661,7 +674,7 @@ function Message({ message }) {
     const content = message.message.content
     const rendered = content.map((block, i) => {
       if (block.type === 'text' && block.text?.trim()) {
-        return html`<div key=${i} class="message message-assistant">${block.text}</div>`
+        return html`<div key=${i} class="message message-assistant markdown-body" dangerouslySetInnerHTML=${{ __html: renderMarkdown(block.text) }}></div>`
       }
       if (block.type === 'tool_use') {
         return html`<${ToolCall} key=${i} name=${block.name} input=${block.input} />`
