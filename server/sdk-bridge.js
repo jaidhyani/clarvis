@@ -52,10 +52,12 @@ export function createQueryRunner(sessionId, options, callbacks) {
         abortController,
         canUseTool,
         includePartialMessages: true,
-        settingSources: options.settingSources || ['project'],
+        settingSources: options.settingSources || ['user', 'project'],
         systemPrompt: options.systemPrompt || { type: 'preset', preset: 'claude_code' },
         // Replay conversation history when resuming a session
-        extraArgs: options.resume ? { 'replay-user-messages': null } : undefined
+        extraArgs: options.resume ? { 'replay-user-messages': null } : undefined,
+        // Use the actual Claude Code binary instead of SDK's Node implementation
+        pathToClaudeCodeExecutable: process.env.CLAUDE_CODE_PATH || `${process.env.HOME}/.local/bin/claude`
       }
 
       const response = query({
@@ -68,9 +70,9 @@ export function createQueryRunner(sessionId, options, callbacks) {
         if (!queryState.running) break
         onMessage(message)
       }
-
       onComplete()
     } catch (error) {
+      console.error('[sdk-bridge] Query error:', error)
       if (error.name === 'AbortError') {
         onComplete('interrupted')
       } else {

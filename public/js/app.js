@@ -27,6 +27,7 @@ function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [showStatusModal, setShowStatusModal] = useState(false)
   const [statusData, setStatusData] = useState(null)
+  const [errorToast, setErrorToast] = useState(null)
   const wsRef = useRef(null)
   const messagesEndRef = useRef(null)
   const seenMessageIds = useRef(new Map()) // sessionId -> Set of message uuids we've processed
@@ -215,6 +216,8 @@ function App() {
 
       case 'error':
         console.error('Server error:', msg.error)
+        setErrorToast(msg.error)
+        setTimeout(() => setErrorToast(null), 8000)
         break
     }
   }, [])
@@ -385,6 +388,14 @@ function App() {
           status=${statusData}
           onClose=${() => setShowStatusModal(false)}
         />
+      `}
+
+      ${errorToast && html`
+        <div class="error-toast" onClick=${() => setErrorToast(null)}>
+          <span class="error-toast-icon">⚠</span>
+          <span class="error-toast-message">${errorToast}</span>
+          <button class="error-toast-dismiss">×</button>
+        </div>
       `}
     </div>
   `
