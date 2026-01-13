@@ -454,6 +454,93 @@ body {
   color: var(--text-muted);
 }
 
+/* Image preview in input area */
+.image-preview-container {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 12px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-bottom: none;
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+  max-width: 900px;
+}
+
+.image-preview-container + .prompt-input-wrapper .prompt-input {
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+  border-top-color: var(--border-subtle);
+}
+
+.image-preview {
+  position: relative;
+  width: 80px;
+  height: 80px;
+}
+
+.image-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+}
+
+.image-preview-remove {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--accent-error);
+  border: 2px solid var(--bg-secondary);
+  color: white;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.image-preview-remove:hover {
+  background: #e53935;
+}
+
+/* Images in messages */
+.message-image {
+  max-width: 300px;
+  max-height: 300px;
+  border-radius: var(--radius-md);
+  margin-bottom: 8px;
+  display: block;
+}
+
+/* Attach button */
+.btn-attach {
+  background: transparent;
+  border: none;
+  padding: 8px;
+  cursor: pointer;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-md);
+  transition: color 0.15s, background 0.15s;
+}
+
+.btn-attach:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.btn-attach:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 /* Buttons */
 .btn {
   padding: 8px 16px;

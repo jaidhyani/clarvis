@@ -165,8 +165,12 @@ async function handleMessage(ws, message, config, subscribedSessions) {
     case 'query': {
       const { sessionId, options } = message
 
-      if (!options?.prompt) {
-        send(ws, { type: 'error', error: 'prompt required' })
+      // Support both legacy 'prompt' string and new 'content' array format
+      const hasContent = Array.isArray(options?.content) && options.content.length > 0
+      const hasPrompt = !!options?.prompt
+
+      if (!hasContent && !hasPrompt) {
+        send(ws, { type: 'error', error: 'prompt or content required' })
         return
       }
 

@@ -60,8 +60,11 @@ export function createQueryRunner(sessionId, options, callbacks) {
         pathToClaudeCodeExecutable: process.env.CLAUDE_CODE_PATH || `${process.env.HOME}/.local/bin/claude`
       }
 
+      // Support both content array (with images) and plain prompt string
+      const prompt = options.content || options.prompt
+
       const response = query({
-        prompt: options.prompt,
+        prompt,
         options: queryOptions
       })
 

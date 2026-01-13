@@ -232,12 +232,30 @@ function App() {
     }
   }, [])
 
-  // Send prompt
-  const sendPrompt = useCallback((prompt) => {
+  // Send prompt (accepts { text, images } from PromptInput)
+  const sendPrompt = useCallback(({ text, images }) => {
     if (!activeSessionId || !wsRef.current) return
 
     const session = sessions.find(s => s.id === activeSessionId)
     if (!session) return
+
+    // Build content blocks array (images first per Anthropic recommendation)
+    const content = []
+
+    for (const img of images) {
+      content.push({
+        type: 'image',
+        source: {
+          type: 'base64',
+          media_type: img.mimeType,
+          data: img.dataUrl.split(',')[1] // Strip data:image/...;base64, prefix
+        }
+      })
+    }
+
+    if (text) {
+      content.push({ type: 'text', text })
+    }
 
     // Add user message locally for immediate feedback (marked as pending)
     // Will be replaced when SDK confirms with the real message (with uuid)
@@ -245,7 +263,7 @@ function App() {
       ...prev,
       [activeSessionId]: [...(prev[activeSessionId] || []), {
         type: 'user',
-        message: { content: [{ type: 'text', text: prompt }] },
+        message: { content },
         _pending: true
       }]
     }))
@@ -254,7 +272,7 @@ function App() {
       type: 'query',
       sessionId: activeSessionId,
       options: {
-        prompt,
+        content,
         cwd: session.projectPath,
         name: session.name,
         resume: session.sdkSessionId
@@ -580,12 +598,30 @@ function MessageStream({ messages, messagesEndRef, isLoading }) {
 // Message component
 function Message({ message }) {
   if (message.type === 'user') {
-    const content = message.message?.content
-    const text = Array.isArray(content)
-      ? content.filter(c => c.type === 'text').map(c => c.text).join('\n')
-      : content
-    if (!text) return null
-    return html`<div class="message message-user">${text}</div>`
+    const content = message.message?.content || []
+    const textBlocks = Array.isArray(content)
+      ? content.filter(c => c.type === 'text')
+      : []
+    const imageBlocks = Array.isArray(content)
+      ? content.filter(c => c.type === 'image')
+      : []
+
+    const text = textBlocks.map(c => c.text).join('\n')
+    const hasContent = text || imageBlocks.length > 0
+
+    if (!hasContent) return null
+
+    return html`
+      <div class="message message-user">
+        ${imageBlocks.map((img, i) => {
+          const src = img.source?.type === 'base64'
+            ? 'data:' + img.source.media_type + ';base64,' + img.source.data
+            : img.source?.url
+          return html`<img key=${i} class="message-image" src=${src} alt="Attached image" />`
+        })}
+        ${text && html`<div>${text}</div>`}
+      </div>
+    `
   }
 
   if (message.type === 'assistant') {
@@ -716,12 +752,65 @@ function PermissionCard({ request, onAllow, onDeny }) {
 // Prompt input component
 function PromptInput({ onSubmit, disabled }) {
   const [value, setValue] = useState('')
+  const [images, setImages] = useState([]) // { id, dataUrl, mimeType }
   const textareaRef = useRef(null)
+  const fileInputRef = useRef(null)
+
+  const MAX_IMAGE_SIZE = 20 * 1024 * 1024 // 20MB
+  const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
+
+  const addImageFile = async (file) => {
+    if (!ALLOWED_TYPES.includes(file.type)) {
+      alert('Unsupported image format. Please use JPEG, PNG, GIF, or WebP.')
+      return
+    }
+    if (file.size > MAX_IMAGE_SIZE) {
+      alert('Image too large. Maximum size is 20MB.')
+      return
+    }
+
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      setImages(prev => [...prev, {
+        id: Math.random().toString(36).slice(2),
+        dataUrl: e.target.result,
+        mimeType: file.type
+      }])
+    }
+    reader.readAsDataURL(file)
+  }
+
+  const handlePaste = async (e) => {
+    const items = e.clipboardData?.items
+    if (!items) return
+
+    for (const item of items) {
+      if (item.type.startsWith('image/')) {
+        e.preventDefault()
+        const file = item.getAsFile()
+        if (file) await addImageFile(file)
+      }
+    }
+  }
+
+  const handleFileSelect = (e) => {
+    const files = e.target.files
+    if (!files) return
+    for (const file of files) {
+      addImageFile(file)
+    }
+    e.target.value = '' // Reset so same file can be selected again
+  }
+
+  const removeImage = (id) => {
+    setImages(prev => prev.filter(img => img.id !== id))
+  }
 
   const handleSubmit = () => {
-    if (value.trim() && !disabled) {
-      onSubmit(value.trim())
+    if ((value.trim() || images.length > 0) && !disabled) {
+      onSubmit({ text: value.trim(), images })
       setValue('')
+      setImages([])
     }
   }
 
@@ -740,23 +829,58 @@ function PromptInput({ onSubmit, disabled }) {
     }
   }, [value])
 
+  const canSubmit = !disabled && (value.trim() || images.length > 0)
+
   return html`
     <div class="prompt-container">
+      ${images.length > 0 && html`
+        <div class="image-preview-container">
+          ${images.map(img => html`
+            <div class="image-preview" key=${img.id}>
+              <img src=${img.dataUrl} alt="Preview" />
+              <button
+                class="image-preview-remove"
+                onClick=${() => removeImage(img.id)}
+                title="Remove image"
+              >×</button>
+            </div>
+          `)}
+        </div>
+      `}
       <div class="prompt-input-wrapper">
+        <input
+          ref=${fileInputRef}
+          type="file"
+          accept="image/jpeg,image/png,image/gif,image/webp"
+          multiple
+          style="display: none"
+          onChange=${handleFileSelect}
+        />
+        <button
+          class="btn btn-attach"
+          onClick=${() => fileInputRef.current?.click()}
+          disabled=${disabled}
+          title="Attach image"
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+          </svg>
+        </button>
         <textarea
           ref=${textareaRef}
           class="prompt-input"
           value=${value}
           onInput=${(e) => setValue(e.target.value)}
           onKeyDown=${handleKeyDown}
-          placeholder=${disabled ? 'Waiting for response...' : 'Type a message...'}
+          onPaste=${handlePaste}
+          placeholder=${disabled ? 'Waiting for response...' : 'Type a message or paste an image...'}
           disabled=${disabled}
           rows="1"
         ></textarea>
         <button
           class="btn btn-primary"
           onClick=${handleSubmit}
-          disabled=${disabled || !value.trim()}
+          disabled=${!canSubmit}
         >
           Send
         </button>
