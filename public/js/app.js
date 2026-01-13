@@ -2,15 +2,22 @@ import { h, render } from 'preact'
 import { useState, useEffect, useCallback, useRef } from 'preact/hooks'
 import htm from 'htm'
 import { marked } from './lib/marked.esm.js'
+import hljs from './lib/highlight.min.js'
 import { createWebSocket } from './ws.js'
 
 // Bind htm to preact's h function
 const html = htm.bind(h)
 
-// Configure marked for safe rendering
+// Configure marked with syntax highlighting
 marked.setOptions({
-  breaks: true,  // Convert \n to <br>
-  gfm: true      // GitHub Flavored Markdown
+  breaks: true,
+  gfm: true,
+  highlight: (code, lang) => {
+    if (lang && hljs.getLanguage(lang)) {
+      return hljs.highlight(code, { language: lang }).value
+    }
+    return hljs.highlightAuto(code).value
+  }
 })
 
 // Render markdown to HTML string
