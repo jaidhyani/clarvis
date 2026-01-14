@@ -120,6 +120,7 @@ function App() {
   const [errorToast, setErrorToast] = useState(null)
   const [collapseState, setCollapseState] = useState(() => loadFromStorage('collapse-state', {}))
   const [sessionOrder, setSessionOrder] = useState(() => loadFromStorage('session-order', {}))
+  const [lightboxSrc, setLightboxSrc] = useState(null)
   const wsRef = useRef(null)
   const messagesEndRef = useRef(null)
   const seenMessageIds = useRef(new Map()) // sessionId -> Set of message uuids we've processed
@@ -483,6 +484,7 @@ function App() {
             messages=${activeMessages}
             messagesEndRef=${messagesEndRef}
             isLoading=${activeSession.status === 'running' && !activePermission}
+            onImageClick=${setLightboxSrc}
           />
 
           ${activePermission && html`
@@ -517,6 +519,13 @@ function App() {
         <${StatusModal}
           status=${statusData}
           onClose=${() => setShowStatusModal(false)}
+        />
+      `}
+
+      ${lightboxSrc && html`
+        <${ImageLightbox}
+          src=${lightboxSrc}
+          onClose=${() => setLightboxSrc(null)}
         />
       `}
 
@@ -820,11 +829,11 @@ function MainHeader({ session, onMenuClick, connectionState }) {
 }
 
 // Message stream component
-function MessageStream({ messages, messagesEndRef, isLoading }) {
+function MessageStream({ messages, messagesEndRef, isLoading, onImageClick }) {
   return html`
     <div class="message-stream">
       ${messages.map((msg, i) => html`
-        <${Message} key=${i} message=${msg} />
+        <${Message} key=${i} message=${msg} onImageClick=${onImageClick} />
       `)}
       ${isLoading && html`
         <div class="typing-indicator">
@@ -839,7 +848,7 @@ function MessageStream({ messages, messagesEndRef, isLoading }) {
 }
 
 // Message component
-function Message({ message }) {
+function Message({ message, onImageClick }) {
   if (message.type === 'user') {
     const content = message.message?.content || []
     const textBlocks = Array.isArray(content)
@@ -860,7 +869,13 @@ function Message({ message }) {
           const src = img.source?.type === 'base64'
             ? 'data:' + img.source.media_type + ';base64,' + img.source.data
             : img.source?.url
-          return html`<img key=${i} class="message-image" src=${src} alt="Attached image" />`
+          return html`<img
+            key=${i}
+            class="message-image"
+            src=${src}
+            alt="Attached image"
+            onClick=${() => onImageClick?.(src)}
+          />`
         })}
         ${text && html`<div>${text}</div>`}
       </div>
@@ -1284,6 +1299,23 @@ function StatusModal({ status, onClose }) {
           <button class="btn btn-secondary" onClick=${onClose}>Close</button>
         </div>
       </div>
+    </div>
+  `
+}
+
+// Image lightbox component
+function ImageLightbox({ src, onClose }) {
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [onClose])
+
+  return html`
+    <div class="lightbox-overlay" onClick=${onClose}>
+      <img class="lightbox-image" src=${src} alt="Full size image" onClick=${(e) => e.stopPropagation()} />
     </div>
   `
 }

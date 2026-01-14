@@ -763,6 +763,32 @@ body {
   border-radius: var(--radius-md);
   margin-bottom: 8px;
   display: block;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.message-image:hover {
+  opacity: 0.9;
+}
+
+/* Image lightbox */
+.lightbox-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.9);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.lightbox-image {
+  max-width: 90vw;
+  max-height: 90vh;
+  object-fit: contain;
+  border-radius: var(--radius-md);
+  cursor: default;
 }
 
 /* Attach button */
