@@ -157,3 +157,102 @@ fly logs | grep Password
 ### Status
 
 Click the gear icon in the sidebar to view auth method and system resources.
+
+## Deploy Locally with Tailscale + Caddy
+
+Run Clarvis on your home machine and access it securely from anywhere via a custom domain.
+
+### Prerequisites
+
+- A domain you control (for DNS records)
+- A DNS provider with API access (for automatic TLS certificates)
+- [Tailscale](https://tailscale.com/) installed on your machine and devices
+
+### 1. Set Up Tailscale
+
+Install Tailscale and connect your machine:
+
+```bash
+curl -fsSL https://tailscale.com/install.sh | sh
+sudo tailscale up
+```
+
+Point your domain's DNS to your Tailscale IP (find it with `tailscale ip -4`).
+
+### 2. Install Caddy with DNS Plugin
+
+Caddy needs a DNS plugin for your provider to get wildcard/automatic TLS. Build a custom Caddy:
+
+```bash
+# Using xcaddy (install: go install github.com/caddyserver/xcaddy/cmd/xcaddy@latest)
+xcaddy build --with github.com/caddy-dns/cloudflare  # or your provider
+sudo mv caddy /usr/local/bin/
+sudo setcap 'cap_net_bind_service=+ep' /usr/local/bin/caddy
+```
+
+### 3. Configure Caddy
+
+Create `/etc/caddy/Caddyfile`:
+
+```
+your-domain.com {
+    tls {
+        dns cloudflare {env.CF_API_TOKEN}  # adjust for your provider
+    }
+    reverse_proxy localhost:3000
+}
+```
+
+Create `/etc/caddy/env` with your DNS provider's API token:
+
+```
+CF_API_TOKEN=your_token_here
+```
+
+Secure it:
+
+```bash
+sudo chmod 600 /etc/caddy/env
+```
+
+### 4. Create Systemd Service
+
+Create `/etc/systemd/system/caddy.service`:
+
+```ini
+[Unit]
+Description=Caddy reverse proxy
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/caddy run --config /etc/caddy/Caddyfile
+ExecReload=/usr/local/bin/caddy reload --config /etc/caddy/Caddyfile
+Restart=on-failure
+EnvironmentFile=/etc/caddy/env
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Enable and start:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable caddy
+sudo systemctl start caddy
+```
+
+### 5. Run Clarvis
+
+```bash
+cd /path/to/clarvis
+npm install
+npm start
+```
+
+For persistence, create a systemd service or use a process manager.
+
+### 6. Access
+
+Visit `https://your-domain.com` from any device on your Tailnet. The password prints to console on startup (or set `CLARVIS_PASSWORD` env var).
