@@ -399,6 +399,33 @@ a.project-header {
   font-family: inherit;
 }
 
+/* Header stop button */
+.btn-stop {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: transparent;
+  border: 1px solid var(--accent-error);
+  color: var(--accent-error);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  margin-left: auto;
+  margin-right: 12px;
+}
+
+.btn-stop:hover {
+  background: var(--accent-error);
+  color: white;
+}
+
+.btn-stop svg {
+  flex-shrink: 0;
+}
+
 /* Message stream */
 .message-stream {
   flex: 1;
@@ -1622,9 +1649,10 @@ label {
   color: var(--text-primary);
 }
 
-/* Session archive/restore buttons */
+/* Session archive/restore/stop buttons */
 .session-archive-btn,
-.session-restore-btn {
+.session-restore-btn,
+.session-stop-btn {
   opacity: 0;
   background: transparent;
   border: none;
@@ -1640,14 +1668,26 @@ label {
 }
 
 .session-card:hover .session-archive-btn,
-.session-card:hover .session-restore-btn {
+.session-card:hover .session-restore-btn,
+.session-card:hover .session-stop-btn {
   opacity: 1;
+}
+
+/* Stop button is always visible for running sessions */
+.session-stop-btn {
+  opacity: 1;
+  color: var(--accent-error);
 }
 
 .session-archive-btn:hover,
 .session-restore-btn:hover {
   background: var(--bg-hover);
   color: var(--text-primary);
+}
+
+.session-stop-btn:hover {
+  background: rgba(239, 68, 68, 0.15);
+  color: var(--accent-error);
 }
 
 /* Archived session styling */

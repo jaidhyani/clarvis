@@ -532,6 +532,11 @@ function App() {
     wsRef.current?.send({ type: 'restore_session', sessionId, projectPath })
   }, [])
 
+  // Stop a running session
+  const stopSession = useCallback((sessionId) => {
+    wsRef.current?.send({ type: 'interrupt', sessionId })
+  }, [])
+
   // Auth screen
   if (connectionState === ConnectionState.AUTH_ERROR || (!password && connectionState === ConnectionState.DISCONNECTED)) {
     return html`<${AuthScreen}
@@ -576,6 +581,7 @@ function App() {
         onRenameSession=${renameSession}
         onArchiveSession=${archiveSession}
         onRestoreSession=${restoreSession}
+        onStopSession=${stopSession}
         isOpen=${sidebarOpen}
         connectionState=${connectionState}
         onStatusClick=${() => {
@@ -599,6 +605,7 @@ function App() {
           onMenuClick=${() => setSidebarOpen(!sidebarOpen)}
           connectionState=${connectionState}
           onRenameSession=${renameSession}
+          onStopSession=${stopSession}
         />
 
         ${displaySession ? html`
@@ -726,6 +733,7 @@ function Sidebar({
   onRenameSession,
   onArchiveSession,
   onRestoreSession,
+  onStopSession,
   isOpen,
   connectionState,
   onStatusClick,
@@ -797,6 +805,7 @@ function Sidebar({
               onRenameSession=${onRenameSession}
               onArchiveSession=${onArchiveSession}
               onRestoreSession=${onRestoreSession}
+              onStopSession=${onStopSession}
               onToggleCollapse=${() => toggleCollapse(group.path)}
               onQuickAdd=${() => onQuickAddSession({ name: group.name, path: group.path })}
               onReorder=${(newOrder) => handleReorder(group.path, newOrder)}
@@ -831,6 +840,7 @@ function ProjectGroup({
   onRenameSession,
   onArchiveSession,
   onRestoreSession,
+  onStopSession,
   onToggleCollapse,
   onQuickAdd,
   onReorder,
@@ -938,6 +948,7 @@ function ProjectGroup({
                 onDelete=${() => onDeleteSession(session.id)}
                 onRename=${(name) => onRenameSession(session.id, name)}
                 onArchive=${() => onArchiveSession(session.id)}
+                onStop=${() => onStopSession(session.id)}
                 canArchive=${session.id !== activeSessionId}
                 draggable=${true}
                 onDragStart=${(e) => handleDragStart(e, session.id, idx)}
@@ -991,6 +1002,7 @@ function SessionCard({
   onRename,
   onArchive,
   onRestore,
+  onStop,
   canArchive,
   draggable,
   onDragStart,
@@ -1049,10 +1061,18 @@ function SessionCard({
     setShowMenu(false)
   }
 
+  const handleStop = (e) => {
+    e.stopPropagation()
+    e.preventDefault()
+    onStop?.()
+  }
+
   const handleClick = (e) => {
     e.preventDefault()
     onClick()
   }
+
+  const isRunning = session.status === 'running' || session.status === 'waiting_permission'
 
   return html`
     <a
@@ -1079,7 +1099,18 @@ function SessionCard({
         ` : html`
           <span class="session-card-name">${session.name}</span>
         `}
-        ${!isArchived && canArchive && html`
+        ${isRunning && html`
+          <button
+            class="session-stop-btn"
+            onClick=${handleStop}
+            title="Stop session"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+              <rect x="6" y="6" width="12" height="12" rx="1" />
+            </svg>
+          </button>
+        `}
+        ${!isArchived && !isRunning && canArchive && html`
           <button
             class="session-archive-btn"
             onClick=${handleArchive}
@@ -1116,8 +1147,11 @@ function SessionCard({
           style="position: fixed; left: ${menuPos.x}px; top: ${menuPos.y}px;"
           onClick=${(e) => e.stopPropagation()}
         >
+          ${isRunning && html`
+            <button onClick=${(e) => { handleStop(e); setShowMenu(false); }} class="danger">Stop</button>
+          `}
           <button onClick=${() => { setIsRenaming(true); setShowMenu(false); }}>Rename</button>
-          ${!isArchived && canArchive && html`
+          ${!isArchived && !isRunning && canArchive && html`
             <button onClick=${handleArchive}>Archive</button>
           `}
           ${isArchived && html`
@@ -1132,7 +1166,7 @@ function SessionCard({
 }
 
 // Main header component
-function MainHeader({ session, onMenuClick, connectionState, onRenameSession }) {
+function MainHeader({ session, onMenuClick, connectionState, onRenameSession, onStopSession }) {
   const [isEditing, setIsEditing] = useState(false)
   const [editValue, setEditValue] = useState('')
   const inputRef = useRef(null)
@@ -1163,6 +1197,8 @@ function MainHeader({ session, onMenuClick, connectionState, onRenameSession }) 
     if (e.key === 'Escape') setIsEditing(false)
   }
 
+  const isRunning = session?.status === 'running' || session?.status === 'waiting_permission'
+
   return html`
     <header class="main-header">
       <button class="btn btn-icon" onClick=${onMenuClick} style="display: none">
@@ -1185,6 +1221,18 @@ function MainHeader({ session, onMenuClick, connectionState, onRenameSession }) 
         >
           ${session?.name || 'No session selected'}
         </span>
+      `}
+      ${isRunning && session?.id && session.id !== '_pending' && html`
+        <button
+          class="btn btn-stop"
+          onClick=${() => onStopSession(session.id)}
+          title="Stop this session"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+            <rect x="6" y="6" width="12" height="12" rx="1" />
+          </svg>
+          Stop
+        </button>
       `}
       <div class="connection-indicator ${connectionState}"></div>
     </header>

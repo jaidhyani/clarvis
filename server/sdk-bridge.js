@@ -1,4 +1,47 @@
 import { query } from '@anthropic-ai/claude-agent-sdk'
+import { execSync } from 'child_process'
+import { existsSync } from 'fs'
+
+// Find the Claude Code executable path
+function findClaudeExecutable() {
+  // 1. Explicit env var takes priority
+  if (process.env.CLAUDE_CODE_PATH && existsSync(process.env.CLAUDE_CODE_PATH)) {
+    return process.env.CLAUDE_CODE_PATH
+  }
+
+  // 2. Check native install location first (preferred)
+  const nativeInstallPath = `${process.env.HOME}/.local/bin/claude`
+  if (existsSync(nativeInstallPath)) {
+    return nativeInstallPath
+  }
+
+  // 3. Try to find it in PATH using 'which'
+  try {
+    const whichResult = execSync('which claude', { encoding: 'utf-8' }).trim()
+    if (whichResult && existsSync(whichResult)) {
+      return whichResult
+    }
+  } catch {
+    // 'which' failed, continue to fallbacks
+  }
+
+  // 4. Check other common locations
+  const otherPaths = [
+    '/usr/local/bin/claude',
+    '/usr/bin/claude'
+  ]
+
+  for (const p of otherPaths) {
+    if (existsSync(p)) {
+      return p
+    }
+  }
+
+  // 5. Return default, let SDK handle the error if not found
+  return nativeInstallPath
+}
+
+const claudeExecutablePath = findClaudeExecutable()
 
 // Active queries keyed by sessionId
 const activeQueries = new Map()
@@ -56,8 +99,7 @@ export function createQueryRunner(sessionId, options, callbacks) {
         systemPrompt: options.systemPrompt || { type: 'preset', preset: 'claude_code' },
         // Replay conversation history when resuming a session
         extraArgs: options.resume ? { 'replay-user-messages': null } : undefined,
-        // Use the actual Claude Code binary instead of SDK's Node implementation
-        pathToClaudeCodeExecutable: process.env.CLAUDE_CODE_PATH || `${process.env.HOME}/.local/bin/claude`
+        pathToClaudeCodeExecutable: claudeExecutablePath
       }
 
       // SDK expects prompt as string or AsyncIterable<SDKUserMessage>

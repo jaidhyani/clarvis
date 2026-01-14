@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Session Status**: Visual indicators for active (running/waiting) vs inactive sessions
+- **Stop Button**: Header stop button appears when current session is running
+- **Stop Button**: Sidebar stop icon replaces archive button for running sessions
+- **Stop Button**: Context menu "Stop" option for running sessions
+- **SDK Path Detection**: Auto-detect Claude Code binary (native install prioritized, falls back to PATH)
+
 ## [0.1.4] - 2026-01-14
 
 ### Added
