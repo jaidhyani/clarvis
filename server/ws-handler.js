@@ -1,9 +1,130 @@
 import { validatePassword } from './auth.js'
 import { getAllSessions, getSession, saveSession, updateSession, deleteSession, discoverProjects, loadSessionHistory } from './sessions.js'
 import { createQueryRunner, interruptQuery, getSupportedModels, getSupportedCommands, getActiveQuery } from './sdk-bridge.js'
-import { existsSync } from 'fs'
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs'
 import { homedir, freemem, totalmem, cpus, loadavg } from 'os'
-import { join } from 'path'
+import { join, dirname } from 'path'
+
+// Config file paths by type
+const CONFIG_PATHS = {
+  settings: '.claude/settings.json',
+  local: '.claude/settings.local.json',
+  mcp: '.mcp.json'
+}
+
+// JSON schemas for validation
+const SETTINGS_SCHEMA = {
+  type: 'object',
+  properties: {
+    permissions: {
+      type: 'object',
+      properties: {
+        allow: { type: 'array', items: { type: 'string' } },
+        deny: { type: 'array', items: { type: 'string' } },
+        ask: { type: 'array', items: { type: 'string' } }
+      }
+    },
+    env: { type: 'object' },
+    hooks: { type: 'object' },
+    model: { type: 'string' }
+  }
+}
+
+const MCP_SCHEMA = {
+  type: 'object',
+  properties: {
+    mcpServers: { type: 'object' }
+  }
+}
+
+function validateJsonSchema(data, schema) {
+  if (schema.type === 'object') {
+    if (typeof data !== 'object' || data === null || Array.isArray(data)) {
+      return { valid: false, error: 'Expected object' }
+    }
+    if (schema.properties) {
+      for (const [key, propSchema] of Object.entries(schema.properties)) {
+        if (data[key] !== undefined) {
+          const result = validateJsonSchema(data[key], propSchema)
+          if (!result.valid) {
+            return { valid: false, error: `${key}: ${result.error}` }
+          }
+        }
+      }
+    }
+  } else if (schema.type === 'array') {
+    if (!Array.isArray(data)) {
+      return { valid: false, error: 'Expected array' }
+    }
+    if (schema.items) {
+      for (let i = 0; i < data.length; i++) {
+        const result = validateJsonSchema(data[i], schema.items)
+        if (!result.valid) {
+          return { valid: false, error: `[${i}]: ${result.error}` }
+        }
+      }
+    }
+  } else if (schema.type === 'string') {
+    if (typeof data !== 'string') {
+      return { valid: false, error: 'Expected string' }
+    }
+  }
+  return { valid: true }
+}
+
+function readConfigFile(projectPath, configType) {
+  const relativePath = CONFIG_PATHS[configType]
+  if (!relativePath) {
+    return { error: `Unknown config type: ${configType}` }
+  }
+
+  const fullPath = join(projectPath, relativePath)
+  if (!existsSync(fullPath)) {
+    return { content: '', exists: false }
+  }
+
+  try {
+    const content = readFileSync(fullPath, 'utf-8')
+    return { content, exists: true }
+  } catch (err) {
+    return { error: `Failed to read file: ${err.message}` }
+  }
+}
+
+function writeConfigFile(projectPath, configType, content) {
+  const relativePath = CONFIG_PATHS[configType]
+  if (!relativePath) {
+    return { error: `Unknown config type: ${configType}` }
+  }
+
+  // Validate JSON syntax
+  let parsed
+  try {
+    parsed = JSON.parse(content)
+  } catch (err) {
+    return { error: `Invalid JSON: ${err.message}` }
+  }
+
+  // Validate against schema
+  const schema = configType === 'mcp' ? MCP_SCHEMA : SETTINGS_SCHEMA
+  const validation = validateJsonSchema(parsed, schema)
+  if (!validation.valid) {
+    return { error: `Schema validation failed: ${validation.error}` }
+  }
+
+  const fullPath = join(projectPath, relativePath)
+  const dir = dirname(fullPath)
+
+  try {
+    if (!existsSync(dir)) {
+      mkdirSync(dir, { recursive: true })
+    }
+    writeFileSync(fullPath, content, 'utf-8')
+    return { success: true }
+  } catch (err) {
+    return { error: `Failed to write file: ${err.message}` }
+  }
+}
 
 // Track WebSocket connections by sessionId for broadcasting
 const sessionConnections = new Map()
@@ -379,6 +500,36 @@ async function handleMessage(ws, message, config, subscribedSessions) {
         send(ws, { type: 'session_renamed', sessionId, name })
       } else {
         send(ws, { type: 'error', error: 'Session not found' })
+      }
+      break
+    }
+
+    case 'read_config': {
+      const { projectPath, configType } = message
+      if (!projectPath || !configType) {
+        send(ws, { type: 'error', error: 'projectPath and configType required' })
+        return
+      }
+      const result = readConfigFile(projectPath, configType)
+      if (result.error) {
+        send(ws, { type: 'error', error: result.error })
+      } else {
+        send(ws, { type: 'config_content', configType, content: result.content, exists: result.exists })
+      }
+      break
+    }
+
+    case 'write_config': {
+      const { projectPath, configType, content } = message
+      if (!projectPath || !configType || content === undefined) {
+        send(ws, { type: 'error', error: 'projectPath, configType, and content required' })
+        return
+      }
+      const result = writeConfigFile(projectPath, configType, content)
+      if (result.error) {
+        send(ws, { type: 'config_error', configType, error: result.error })
+      } else {
+        send(ws, { type: 'config_saved', configType })
       }
       break
     }

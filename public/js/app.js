@@ -28,6 +28,17 @@ function renderMarkdown(text) {
   return marked.parse(text)
 }
 
+// Highlight JSON for config editor
+function highlightJson(text) {
+  if (!text) return ''
+  try {
+    return hljs.highlight(text, { language: 'json' }).value
+  } catch {
+    // If highlighting fails, escape HTML and return plain text
+    return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  }
+}
+
 // Connection states
 const ConnectionState = {
   DISCONNECTED: 'disconnected',
@@ -121,6 +132,7 @@ function App() {
   const [collapseState, setCollapseState] = useState(() => loadFromStorage('collapse-state', {}))
   const [sessionOrder, setSessionOrder] = useState(() => loadFromStorage('session-order', {}))
   const [lightboxSrc, setLightboxSrc] = useState(null)
+  const [settingsProject, setSettingsProject] = useState(null) // { name, path } when settings modal is open
   const wsRef = useRef(null)
   const messagesEndRef = useRef(null)
   const seenMessageIds = useRef(new Map()) // sessionId -> Set of message uuids we've processed
@@ -470,6 +482,7 @@ function App() {
         setCollapseState=${setCollapseState}
         sessionOrder=${sessionOrder}
         setSessionOrder=${setSessionOrder}
+        onOpenSettings=${(project) => setSettingsProject(project)}
       />
 
       <div class="main-content">
@@ -519,6 +532,14 @@ function App() {
         <${StatusModal}
           status=${statusData}
           onClose=${() => setShowStatusModal(false)}
+        />
+      `}
+
+      ${settingsProject && html`
+        <${ProjectSettingsModal}
+          project=${settingsProject}
+          ws=${wsRef.current}
+          onClose=${() => setSettingsProject(null)}
         />
       `}
 
@@ -598,7 +619,8 @@ function Sidebar({
   collapseState,
   setCollapseState,
   sessionOrder,
-  setSessionOrder
+  setSessionOrder,
+  onOpenSettings
 }) {
   const projectGroups = groupSessionsByProject(sessions, collapseState, sessionOrder)
 
@@ -638,6 +660,7 @@ function Sidebar({
               onToggleCollapse=${() => toggleCollapse(group.path)}
               onQuickAdd=${() => onQuickAddSession({ name: group.name, path: group.path })}
               onReorder=${(newOrder) => handleReorder(group.path, newOrder)}
+              onOpenSettings=${() => onOpenSettings({ name: group.name, path: group.path })}
             />
           `)}
         </div>
@@ -663,7 +686,8 @@ function ProjectGroup({
   onRenameSession,
   onToggleCollapse,
   onQuickAdd,
-  onReorder
+  onReorder,
+  onOpenSettings
 }) {
   const [dragOverIdx, setDragOverIdx] = useState(null)
   const dragSourceRef = useRef(null)
@@ -714,6 +738,16 @@ function ProjectGroup({
         <span class="project-chevron ${group.collapsed ? '' : 'expanded'}">\u203a</span>
         <span class="project-name">${group.name}</span>
         <span class="project-count">${group.sessions.length}</span>
+        <button
+          class="project-settings-btn"
+          onClick=${(e) => { e.stopPropagation(); onOpenSettings() }}
+          title="Project settings"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+        </button>
         <button
           class="project-add-btn"
           onClick=${(e) => { e.stopPropagation(); onQuickAdd() }}
@@ -1296,6 +1330,166 @@ function StatusModal({ status, onClose }) {
           `}
         </div>
         <div class="modal-footer">
+          <button class="btn btn-secondary" onClick=${onClose}>Close</button>
+        </div>
+      </div>
+    </div>
+  `
+}
+
+// Project settings modal component
+function ProjectSettingsModal({ project, ws, onClose }) {
+  const CONFIG_TYPES = [
+    { id: 'settings', label: 'Settings', path: '.claude/settings.json' },
+    { id: 'local', label: 'Local Settings', path: '.claude/settings.local.json' },
+    { id: 'mcp', label: 'MCP Servers', path: '.mcp.json' }
+  ]
+
+  const [activeTab, setActiveTab] = useState('settings')
+  const [contents, setContents] = useState({}) // configType -> { content, exists, dirty }
+  const [error, setError] = useState(null)
+  const [success, setSuccess] = useState(null)
+  const [loading, setLoading] = useState(true)
+
+  // Load all config files on mount
+  useEffect(() => {
+    if (!ws || !project) return
+
+    const pending = new Set(CONFIG_TYPES.map(t => t.id))
+    const loaded = {}
+
+    const handleMessage = (event) => {
+      const msg = JSON.parse(event.data)
+
+      if (msg.type === 'config_content') {
+        loaded[msg.configType] = {
+          content: msg.content,
+          exists: msg.exists,
+          dirty: false
+        }
+        pending.delete(msg.configType)
+
+        if (pending.size === 0) {
+          setContents(loaded)
+          setLoading(false)
+        }
+      }
+
+      if (msg.type === 'config_saved') {
+        setContents(prev => ({
+          ...prev,
+          [msg.configType]: { ...prev[msg.configType], dirty: false, exists: true }
+        }))
+        setSuccess('Saved successfully')
+        setTimeout(() => setSuccess(null), 2000)
+      }
+
+      if (msg.type === 'config_error') {
+        setError(msg.error)
+      }
+    }
+
+    ws.ws.addEventListener('message', handleMessage)
+
+    // Request all config files
+    for (const type of CONFIG_TYPES) {
+      ws.send({ type: 'read_config', projectPath: project.path, configType: type.id })
+    }
+
+    return () => ws.ws.removeEventListener('message', handleMessage)
+  }, [ws, project])
+
+  const handleContentChange = (configType, newContent) => {
+    setContents(prev => ({
+      ...prev,
+      [configType]: { ...prev[configType], content: newContent, dirty: true }
+    }))
+    setError(null)
+    setSuccess(null)
+  }
+
+  const handleSave = () => {
+    const currentContent = contents[activeTab]
+    if (!currentContent?.dirty) return
+
+    // Basic JSON validation before sending
+    if (currentContent.content.trim()) {
+      try {
+        JSON.parse(currentContent.content)
+      } catch (e) {
+        setError(`Invalid JSON: ${e.message}`)
+        return
+      }
+    }
+
+    setError(null)
+    ws.send({
+      type: 'write_config',
+      projectPath: project.path,
+      configType: activeTab,
+      content: currentContent.content || '{}'
+    })
+  }
+
+  const activeConfig = CONFIG_TYPES.find(t => t.id === activeTab)
+  const currentContent = contents[activeTab]
+
+  return html`
+    <div class="modal-overlay" onClick=${(e) => e.target === e.currentTarget && onClose()}>
+      <div class="modal settings-modal">
+        <div class="modal-header">
+          <h2 class="modal-title">Settings: ${project.name}</h2>
+        </div>
+        <div class="modal-body">
+          <div class="config-tabs">
+            ${CONFIG_TYPES.map(type => html`
+              <button
+                key=${type.id}
+                class="config-tab ${activeTab === type.id ? 'active' : ''}"
+                onClick=${() => setActiveTab(type.id)}
+              >
+                <span class="config-tab-label">
+                  ${type.label}
+                  ${contents[type.id] && !contents[type.id].exists && html`
+                    <span class="config-tab-new">(new)</span>
+                  `}
+                  ${contents[type.id]?.dirty && html`
+                    <span style="color: var(--accent-warning)">*</span>
+                  `}
+                </span>
+              </button>
+            `)}
+          </div>
+
+          ${loading ? html`
+            <p style="color: var(--text-secondary)">Loading...</p>
+          ` : html`
+            <div class="config-file-path">${activeConfig.path}</div>
+            <div class="config-editor-container">
+              <pre class="config-highlight"><code
+                class="language-json"
+                dangerouslySetInnerHTML=${{ __html: highlightJson(currentContent?.content || '') }}
+              ></code></pre>
+              <textarea
+                class="config-editor"
+                value=${currentContent?.content || ''}
+                onInput=${(e) => handleContentChange(activeTab, e.target.value)}
+                placeholder=${`{\n  // ${activeConfig.label} configuration\n}`}
+                spellcheck="false"
+              ></textarea>
+            </div>
+            ${error && html`<div class="config-error">${error}</div>`}
+            ${success && html`<div class="config-success">${success}</div>`}
+          `}
+        </div>
+        <div class="modal-footer">
+          <button
+            class="btn btn-primary"
+            onClick=${handleSave}
+            disabled=${!currentContent?.dirty || loading}
+          >
+            Save
+          </button>
           <button class="btn btn-secondary" onClick=${onClose}>Close</button>
         </div>
       </div>
