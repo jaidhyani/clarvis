@@ -16,7 +16,7 @@ Web UI for the Claude Agent SDK. Manage multiple Claude Code sessions from your 
 
 ```bash
 npm install
-./start.sh
+npm start
 ```
 
 Opens at `http://localhost:3000`. Password prints to console on startup.
@@ -93,10 +93,10 @@ Supported formats: JPEG, PNG, GIF, WebP (max 20MB each).
 npm run dev
 
 # Trigger restart (from another terminal)
-./restart.sh
+npm run restart
 
-# Hard kill server
-./restart.sh kill
+# Stop server
+npm run stop
 
 # Run tests
 npm test
