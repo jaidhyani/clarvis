@@ -671,6 +671,7 @@ body {
   padding: 16px;
   background: var(--bg-secondary);
   border-top: 1px solid var(--border-color);
+  position: relative;
 }
 
 .prompt-input-wrapper {
@@ -813,6 +814,139 @@ body {
 .btn-attach:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* Slash command button */
+.btn-slash {
+  background: transparent;
+  border: none;
+  padding: 8px 12px;
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: 18px;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-md);
+  transition: color 0.15s, background 0.15s;
+}
+
+.btn-slash:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.btn-slash:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Command autocomplete */
+.command-autocomplete {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  max-height: 240px;
+  overflow-y: auto;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  margin-bottom: 8px;
+  box-shadow: var(--shadow-md);
+  z-index: 100;
+}
+
+.command-item {
+  padding: 8px 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.command-item:hover,
+.command-item.highlighted {
+  background: var(--bg-hover);
+}
+
+.command-name {
+  color: var(--accent-primary);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.command-args {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.command-description {
+  color: var(--text-secondary);
+  font-size: 12px;
+  flex: 1;
+  min-width: 150px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.command-autocomplete-empty,
+.command-autocomplete-error {
+  padding: 12px;
+  color: var(--text-muted);
+  font-size: 13px;
+  text-align: center;
+}
+
+.command-autocomplete-error {
+  color: var(--accent-error);
+}
+
+/* Prompt input container for overlay */
+.prompt-input-container {
+  position: relative;
+  flex: 1;
+}
+
+.prompt-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 12px 16px;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  pointer-events: none;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow: hidden;
+  color: transparent;
+}
+
+.prompt-input-container .prompt-input {
+  background: var(--bg-tertiary);
+}
+
+.prompt-input-container .prompt-input.has-command {
+  color: var(--text-primary);
+  caret-color: var(--text-primary);
+}
+
+.command-highlight {
+  color: var(--accent-primary);
+  font-weight: 500;
+  background: rgba(88, 166, 255, 0.1);
+  border-radius: 2px;
+  padding: 0 2px;
+  margin: 0 -2px;
 }
 
 /* Buttons */

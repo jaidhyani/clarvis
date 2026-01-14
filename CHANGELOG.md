@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-01-14
+
+### Added
+
+- **Slash Commands**: "/" button in prompt input opens command autocomplete
+- **Slash Commands**: Typing "/" triggers autocomplete with fuzzy matching
+- **Slash Commands**: Arrow key navigation, Enter/Tab to select
+- **Slash Commands**: Command highlighting in input when valid command recognized
+- **Slash Commands**: ARIA accessibility attributes for screen readers
+
 ## [0.1.2] - 2026-01-14
 
 ### Added
