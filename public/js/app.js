@@ -36,6 +36,74 @@ const ConnectionState = {
   AUTH_ERROR: 'auth_error'
 }
 
+// localStorage helpers with namespaced keys
+const getStorageKey = (key) => {
+  const serverUrl = window.location.host
+  return `clarvis-${key}-${serverUrl}`
+}
+
+const loadFromStorage = (key, defaultValue) => {
+  try {
+    const stored = localStorage.getItem(getStorageKey(key))
+    return stored ? JSON.parse(stored) : defaultValue
+  } catch {
+    return defaultValue
+  }
+}
+
+const saveToStorage = (key, value) => {
+  try {
+    localStorage.setItem(getStorageKey(key), JSON.stringify(value))
+  } catch {
+    // localStorage might be full or disabled
+  }
+}
+
+// Group sessions by project path
+function groupSessionsByProject(sessions, collapseState, sessionOrder) {
+  const groups = {}
+
+  for (const session of sessions) {
+    const projectPath = session.projectPath || 'unknown'
+    const projectName = projectPath.split('/').pop() || 'Unknown'
+
+    if (!groups[projectPath]) {
+      groups[projectPath] = {
+        name: projectName,
+        path: projectPath,
+        sessions: [],
+        latestActivity: 0,
+        collapsed: collapseState[projectPath] ?? false
+      }
+    }
+    groups[projectPath].sessions.push(session)
+    groups[projectPath].latestActivity = Math.max(
+      groups[projectPath].latestActivity,
+      session.lastActivity || 0
+    )
+  }
+
+  // Sort sessions within each project by custom order or default (latest first)
+  for (const path of Object.keys(groups)) {
+    const customOrder = sessionOrder[path]
+    if (customOrder && customOrder.length > 0) {
+      groups[path].sessions.sort((a, b) => {
+        const aIdx = customOrder.indexOf(a.id)
+        const bIdx = customOrder.indexOf(b.id)
+        if (aIdx === -1 && bIdx === -1) return (b.lastActivity || 0) - (a.lastActivity || 0)
+        if (aIdx === -1) return 1
+        if (bIdx === -1) return -1
+        return aIdx - bIdx
+      })
+    } else {
+      groups[path].sessions.sort((a, b) => (b.lastActivity || 0) - (a.lastActivity || 0))
+    }
+  }
+
+  // Sort projects by latest activity
+  return Object.values(groups).sort((a, b) => b.latestActivity - a.latestActivity)
+}
+
 // Main App component
 function App() {
   const [password, setPassword] = useState(() => localStorage.getItem('clarvis_password') || '')
@@ -50,9 +118,21 @@ function App() {
   const [showStatusModal, setShowStatusModal] = useState(false)
   const [statusData, setStatusData] = useState(null)
   const [errorToast, setErrorToast] = useState(null)
+  const [collapseState, setCollapseState] = useState(() => loadFromStorage('collapse-state', {}))
+  const [sessionOrder, setSessionOrder] = useState(() => loadFromStorage('session-order', {}))
   const wsRef = useRef(null)
   const messagesEndRef = useRef(null)
   const seenMessageIds = useRef(new Map()) // sessionId -> Set of message uuids we've processed
+
+  // Persist collapse state changes
+  useEffect(() => {
+    saveToStorage('collapse-state', collapseState)
+  }, [collapseState])
+
+  // Persist session order changes
+  useEffect(() => {
+    saveToStorage('session-order', sessionOrder)
+  }, [sessionOrder])
 
   // Scroll to bottom when messages change
   useEffect(() => {
@@ -371,6 +451,7 @@ function App() {
           wsRef.current?.send({ type: 'get_history', sessionId: id })
         }}
         onNewSession=${() => setShowNewSessionModal(true)}
+        onQuickAddSession=${startNewSession}
         onDeleteSession=${deleteSession}
         onRenameSession=${renameSession}
         isOpen=${sidebarOpen}
@@ -379,6 +460,10 @@ function App() {
           wsRef.current?.send({ type: 'get_status' })
           setShowStatusModal(true)
         }}
+        collapseState=${collapseState}
+        setCollapseState=${setCollapseState}
+        sessionOrder=${sessionOrder}
+        setSessionOrder=${setSessionOrder}
       />
 
       <div class="main-content">
@@ -485,7 +570,38 @@ function AuthScreen({ onSubmit, error }) {
 }
 
 // Sidebar component
-function Sidebar({ sessions, activeSessionId, onSelectSession, onNewSession, onDeleteSession, onRenameSession, isOpen, connectionState, onStatusClick }) {
+function Sidebar({
+  sessions,
+  activeSessionId,
+  onSelectSession,
+  onNewSession,
+  onQuickAddSession,
+  onDeleteSession,
+  onRenameSession,
+  isOpen,
+  connectionState,
+  onStatusClick,
+  collapseState,
+  setCollapseState,
+  sessionOrder,
+  setSessionOrder
+}) {
+  const projectGroups = groupSessionsByProject(sessions, collapseState, sessionOrder)
+
+  const toggleCollapse = (projectPath) => {
+    setCollapseState(prev => ({
+      ...prev,
+      [projectPath]: !prev[projectPath]
+    }))
+  }
+
+  const handleReorder = (projectPath, newOrder) => {
+    setSessionOrder(prev => ({
+      ...prev,
+      [projectPath]: newOrder
+    }))
+  }
+
   return html`
     <aside class="sidebar ${isOpen ? 'open' : ''}">
       <div class="sidebar-header">
@@ -496,15 +612,18 @@ function Sidebar({ sessions, activeSessionId, onSelectSession, onNewSession, onD
         <button class="btn btn-primary" style="width: 100%; margin-bottom: 12px" onClick=${onNewSession}>
           + New Session
         </button>
-        <div class="session-list">
-          ${sessions.map(session => html`
-            <${SessionCard}
-              key=${session.id}
-              session=${session}
-              isActive=${session.id === activeSessionId}
-              onClick=${() => onSelectSession(session.id)}
-              onDelete=${() => onDeleteSession(session.id)}
-              onRename=${(name) => onRenameSession(session.id, name)}
+        <div class="project-groups">
+          ${projectGroups.map(group => html`
+            <${ProjectGroup}
+              key=${group.path}
+              group=${group}
+              activeSessionId=${activeSessionId}
+              onSelectSession=${onSelectSession}
+              onDeleteSession=${onDeleteSession}
+              onRenameSession=${onRenameSession}
+              onToggleCollapse=${() => toggleCollapse(group.path)}
+              onQuickAdd=${() => onQuickAddSession({ name: group.name, path: group.path })}
+              onReorder=${(newOrder) => handleReorder(group.path, newOrder)}
             />
           `)}
         </div>
@@ -521,8 +640,102 @@ function Sidebar({ sessions, activeSessionId, onSelectSession, onNewSession, onD
   `
 }
 
+// Project group component with collapsible header
+function ProjectGroup({
+  group,
+  activeSessionId,
+  onSelectSession,
+  onDeleteSession,
+  onRenameSession,
+  onToggleCollapse,
+  onQuickAdd,
+  onReorder
+}) {
+  const [dragOverIdx, setDragOverIdx] = useState(null)
+  const dragSourceRef = useRef(null)
+
+  const handleDragStart = (e, sessionId, idx) => {
+    dragSourceRef.current = { sessionId, idx }
+    e.dataTransfer.effectAllowed = 'move'
+    e.dataTransfer.setData('text/plain', sessionId)
+    e.target.classList.add('dragging')
+  }
+
+  const handleDragEnd = (e) => {
+    e.target.classList.remove('dragging')
+    dragSourceRef.current = null
+    setDragOverIdx(null)
+  }
+
+  const handleDragOver = (e, idx) => {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    if (dragSourceRef.current && dragSourceRef.current.idx !== idx) {
+      setDragOverIdx(idx)
+    }
+  }
+
+  const handleDragLeave = () => {
+    setDragOverIdx(null)
+  }
+
+  const handleDrop = (e, dropIdx) => {
+    e.preventDefault()
+    setDragOverIdx(null)
+
+    if (!dragSourceRef.current) return
+
+    const { idx: sourceIdx } = dragSourceRef.current
+    if (sourceIdx === dropIdx) return
+
+    const sessionIds = group.sessions.map(s => s.id)
+    const [moved] = sessionIds.splice(sourceIdx, 1)
+    sessionIds.splice(dropIdx, 0, moved)
+    onReorder(sessionIds)
+  }
+
+  return html`
+    <div class="project-group">
+      <div class="project-header" onClick=${onToggleCollapse}>
+        <span class="project-chevron ${group.collapsed ? '' : 'expanded'}">\u203a</span>
+        <span class="project-name">${group.name}</span>
+        <span class="project-count">${group.sessions.length}</span>
+        <button
+          class="project-add-btn"
+          onClick=${(e) => { e.stopPropagation(); onQuickAdd() }}
+          title="New session in ${group.name}"
+        >+</button>
+      </div>
+      ${!group.collapsed && html`
+        <div class="project-sessions">
+          ${group.sessions.map((session, idx) => html`
+            <div
+              key=${session.id}
+              class="session-drop-zone ${dragOverIdx === idx ? 'drag-over' : ''}"
+              onDragOver=${(e) => handleDragOver(e, idx)}
+              onDragLeave=${handleDragLeave}
+              onDrop=${(e) => handleDrop(e, idx)}
+            >
+              <${SessionCard}
+                session=${session}
+                isActive=${session.id === activeSessionId}
+                onClick=${() => onSelectSession(session.id)}
+                onDelete=${() => onDeleteSession(session.id)}
+                onRename=${(name) => onRenameSession(session.id, name)}
+                draggable=${true}
+                onDragStart=${(e) => handleDragStart(e, session.id, idx)}
+                onDragEnd=${handleDragEnd}
+              />
+            </div>
+          `)}
+        </div>
+      `}
+    </div>
+  `
+}
+
 // Session card component
-function SessionCard({ session, isActive, onClick, onDelete, onRename }) {
+function SessionCard({ session, isActive, onClick, onDelete, onRename, draggable, onDragStart, onDragEnd }) {
   const [showMenu, setShowMenu] = useState(false)
   const [isRenaming, setIsRenaming] = useState(false)
   const [newName, setNewName] = useState(session.name)
@@ -553,6 +766,9 @@ function SessionCard({ session, isActive, onClick, onDelete, onRename }) {
       class="session-card ${isActive ? 'active' : ''}"
       onClick=${onClick}
       onContextMenu=${handleContextMenu}
+      draggable=${draggable}
+      onDragStart=${onDragStart}
+      onDragEnd=${onDragEnd}
     >
       <div class="session-card-header">
         ${isRenaming ? html`

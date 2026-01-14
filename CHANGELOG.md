@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-01-13
+
+### Added
+
+- **Sidebar**: Sessions now grouped under collapsible project headers
+- **Sidebar**: Session count badge on each project
+- **Sidebar**: Quick-add "+" button to create session directly in a project
+- **Sidebar**: Drag-and-drop to reorder sessions within a project
+- **Persistence**: Collapse state and session order saved to localStorage (namespaced by server)
+
 ## [0.1.0] - 2025-01-13
 
 ### Added

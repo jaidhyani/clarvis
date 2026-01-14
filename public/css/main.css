@@ -98,6 +98,117 @@ body {
   padding: 8px;
 }
 
+/* Project Groups */
+.project-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.project-group {
+  margin-bottom: 4px;
+}
+
+.project-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s ease;
+}
+
+.project-header:hover {
+  background: var(--bg-tertiary);
+}
+
+.project-chevron {
+  font-size: 14px;
+  color: var(--text-muted);
+  transition: transform 0.15s ease;
+  transform: rotate(0deg);
+  width: 12px;
+  display: inline-block;
+}
+
+.project-chevron.expanded {
+  transform: rotate(90deg);
+}
+
+.project-name {
+  flex: 1;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-count {
+  font-size: 11px;
+  color: var(--text-muted);
+  background: var(--bg-tertiary);
+  padding: 2px 6px;
+  border-radius: 10px;
+  min-width: 18px;
+  text-align: center;
+}
+
+.project-add-btn {
+  opacity: 0;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 16px;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.15s, background 0.15s, color 0.15s;
+}
+
+.project-header:hover .project-add-btn {
+  opacity: 1;
+}
+
+.project-add-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.project-sessions {
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* Session drop zone for drag-and-drop */
+.session-drop-zone {
+  position: relative;
+  border-radius: var(--radius-md);
+}
+
+.session-drop-zone.drag-over::before {
+  content: '';
+  position: absolute;
+  top: -1px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--accent-primary);
+  border-radius: 1px;
+  z-index: 10;
+}
+
 /* Session List */
 .session-list {
   display: flex;
@@ -121,6 +232,19 @@ body {
 .session-card.active {
   background: var(--bg-hover);
   border: 1px solid var(--accent-primary);
+}
+
+.session-card.dragging {
+  opacity: 0.5;
+  cursor: grabbing;
+}
+
+.session-card[draggable="true"] {
+  cursor: grab;
+}
+
+.session-card[draggable="true"]:active {
+  cursor: grabbing;
 }
 
 .session-card-header {
