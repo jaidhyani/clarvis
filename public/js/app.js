@@ -1358,9 +1358,7 @@ function ProjectSettingsModal({ project, ws, onClose }) {
     const pending = new Set(CONFIG_TYPES.map(t => t.id))
     const loaded = {}
 
-    const handleMessage = (event) => {
-      const msg = JSON.parse(event.data)
-
+    const handleMessage = (msg) => {
       if (msg.type === 'config_content') {
         loaded[msg.configType] = {
           content: msg.content,
@@ -1389,14 +1387,14 @@ function ProjectSettingsModal({ project, ws, onClose }) {
       }
     }
 
-    ws.ws.addEventListener('message', handleMessage)
+    const removeListener = ws.addMessageListener(handleMessage)
 
     // Request all config files
     for (const type of CONFIG_TYPES) {
       ws.send({ type: 'read_config', projectPath: project.path, configType: type.id })
     }
 
-    return () => ws.ws.removeEventListener('message', handleMessage)
+    return removeListener
   }, [ws, project])
 
   const handleContentChange = (configType, newContent) => {

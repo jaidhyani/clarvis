@@ -7,6 +7,7 @@ Preact + htm with no build step. All components in `js/app.js`.
 ```
 App                        # Root - owns all state, renders modals/overlays
 ├── Sidebar                # Session list, project grouping
+│   └── ProjectGroup       # Collapsible project with sessions
 ├── SessionHeader          # Active session name, status
 ├── MessageStream          # Scrollable message list
 │   └── Message            # Single message (user/assistant/tool)
@@ -14,6 +15,7 @@ App                        # Root - owns all state, renders modals/overlays
 ├── PromptInput            # Text input + image attachments
 ├── NewSessionModal        # Project picker overlay
 ├── StatusModal            # Server status overlay
+├── ProjectSettingsModal   # Per-project config editor (settings.json, .mcp.json)
 └── ImageLightbox          # Full-size image overlay
 ```
 

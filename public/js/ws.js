@@ -83,6 +83,23 @@ export function createWebSocket(password, handlers) {
     return ws && ws.readyState === WebSocket.OPEN
   }
 
+  // Additional message listeners (for components that need direct access)
+  const messageListeners = new Set()
+
+  function addMessageListener(listener) {
+    messageListeners.add(listener)
+    return () => messageListeners.delete(listener)
+  }
+
+  // Wrap the original onmessage to also call additional listeners
+  const originalOnMessage = handlers.onMessage
+  handlers.onMessage = (message) => {
+    originalOnMessage?.(message)
+    for (const listener of messageListeners) {
+      listener(message)
+    }
+  }
+
   // Start connection
   connect()
 
@@ -90,6 +107,7 @@ export function createWebSocket(password, handlers) {
     send,
     close,
     isConnected,
-    reconnect: connect
+    reconnect: connect,
+    addMessageListener
   }
 }

@@ -49,9 +49,9 @@ public/
 
 ## WebSocket Protocol
 
-Client sends: `query`, `resume`, `interrupt`, `permission`, `list_sessions`, `get_status`, `get_models`, `get_commands`
+Client sends: `query`, `resume`, `interrupt`, `permission`, `list_sessions`, `get_status`, `get_models`, `get_commands`, `read_config`, `write_config`
 
-Server sends: `message` (SDK passthrough), `permission_request`, `status`, `sessions`, `models`, `commands`, `error`
+Server sends: `message` (SDK passthrough), `permission_request`, `status`, `sessions`, `models`, `commands`, `config_content`, `config_saved`, `config_error`, `error`
 
 ### Query Message Format
 

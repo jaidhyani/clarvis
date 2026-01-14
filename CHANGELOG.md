@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-01-14
+
+### Added
+
+- **Project Settings**: Gear icon on project headers opens config editor modal
+- **Config Editor**: Edit `.claude/settings.json`, `.claude/settings.local.json`, and `.mcp.json` per project
+- **Config Editor**: JSON syntax highlighting and schema validation
+- **WebSocket**: `addMessageListener` method for component-level message subscriptions
+
 ## [0.1.1] - 2026-01-13
 
 ### Added

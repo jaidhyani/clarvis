@@ -5,6 +5,7 @@ Web UI for the Claude Agent SDK. Manage multiple Claude Code sessions from your 
 ## Features
 
 - **Multi-session**: Run multiple Claude Code sessions across different projects
+- **Project settings**: Edit Claude Code config files (settings.json, .mcp.json) per project
 - **Image support**: Paste images (Ctrl+V) or click attach to send images to Claude
 - **Mobile-friendly**: Responsive dark theme, works on phones
 - **No build step**: Preact + htm via ES modules, just run and go
