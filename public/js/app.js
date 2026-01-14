@@ -145,6 +145,9 @@ function App() {
   const [settingsProject, setSettingsProject] = useState(null) // { name, path } when settings modal is open
   const [commands, setCommands] = useState([]) // Slash commands from SDK
   const [commandsError, setCommandsError] = useState(null) // Error fetching commands
+  const [selectedSessions, setSelectedSessions] = useState(new Set()) // Selected session IDs for bulk actions
+  const [lastSelectedSession, setLastSelectedSession] = useState(null) // For shift-click range selection
+  const [bulkActionToast, setBulkActionToast] = useState(null) // { message, type }
   const wsRef = useRef(null)
   const messagesEndRef = useRef(null)
   const seenMessageIds = useRef(new Map()) // sessionId -> Set of message uuids we've processed
@@ -353,6 +356,32 @@ function App() {
         ))
         break
 
+      case 'bulk_result': {
+        const { action, succeeded, failed } = msg
+        setSelectedSessions(new Set()) // Clear selection after bulk action
+
+        if (failed.length === 0) {
+          setBulkActionToast({ message: `${succeeded.length} session${succeeded.length === 1 ? '' : 's'} ${action}d`, type: 'success' })
+        } else if (succeeded.length === 0) {
+          setBulkActionToast({ message: `Failed to ${action} ${failed.length} session${failed.length === 1 ? '' : 's'}`, type: 'error' })
+        } else {
+          setBulkActionToast({ message: `${succeeded.length} ${action}d, ${failed.length} failed`, type: 'warning' })
+        }
+        setTimeout(() => setBulkActionToast(null), 4000)
+
+        // Update sessions state based on action
+        if (action === 'archive') {
+          setSessions(prev => prev.map(s => succeeded.includes(s.id) ? { ...s, archived: true } : s))
+        } else if (action === 'unarchive') {
+          setSessions(prev => prev.map(s => succeeded.includes(s.id) ? { ...s, archived: false, lastActivity: Date.now() } : s))
+        } else if (action === 'delete') {
+          setSessions(prev => prev.filter(s => !succeeded.includes(s.id)))
+        } else if (action === 'stop') {
+          setSessions(prev => prev.map(s => succeeded.includes(s.id) ? { ...s, status: 'idle' } : s))
+        }
+        break
+      }
+
       case 'history': {
         // Received historical messages from SDK storage
         const sessionId = msg.sessionId
@@ -537,6 +566,79 @@ function App() {
     wsRef.current?.send({ type: 'interrupt', sessionId })
   }, [])
 
+  // Toggle session selection (handles shift-click range selection)
+  const toggleSessionSelection = useCallback((sessionId, event, allVisibleSessions) => {
+    setSelectedSessions(prev => {
+      const next = new Set(prev)
+
+      if (event?.shiftKey && lastSelectedSession && allVisibleSessions) {
+        // Range selection: select all sessions between lastSelectedSession and sessionId
+        const lastIdx = allVisibleSessions.indexOf(lastSelectedSession)
+        const currentIdx = allVisibleSessions.indexOf(sessionId)
+
+        if (lastIdx !== -1 && currentIdx !== -1) {
+          const start = Math.min(lastIdx, currentIdx)
+          const end = Math.max(lastIdx, currentIdx)
+          for (let i = start; i <= end; i++) {
+            next.add(allVisibleSessions[i])
+          }
+        } else {
+          next.add(sessionId)
+        }
+      } else if (event?.metaKey || event?.ctrlKey) {
+        // Toggle individual selection
+        if (next.has(sessionId)) {
+          next.delete(sessionId)
+        } else {
+          next.add(sessionId)
+        }
+      } else {
+        // Simple toggle
+        if (next.has(sessionId)) {
+          next.delete(sessionId)
+        } else {
+          next.add(sessionId)
+        }
+      }
+
+      return next
+    })
+    setLastSelectedSession(sessionId)
+  }, [lastSelectedSession])
+
+  // Clear all selections
+  const clearSelection = useCallback(() => {
+    setSelectedSessions(new Set())
+    setLastSelectedSession(null)
+  }, [])
+
+  // Bulk actions
+  const bulkArchive = useCallback(() => {
+    const ids = Array.from(selectedSessions)
+    if (ids.length === 0) return
+    wsRef.current?.send({ type: 'bulk_archive', sessionIds: ids })
+  }, [selectedSessions])
+
+  const bulkUnarchive = useCallback(() => {
+    const ids = Array.from(selectedSessions)
+    if (ids.length === 0) return
+    wsRef.current?.send({ type: 'bulk_unarchive', sessionIds: ids })
+  }, [selectedSessions])
+
+  const bulkDelete = useCallback(() => {
+    const ids = Array.from(selectedSessions)
+    if (ids.length === 0) return
+    if (confirm(`Delete ${ids.length} session${ids.length === 1 ? '' : 's'}? This cannot be undone.`)) {
+      wsRef.current?.send({ type: 'bulk_delete', sessionIds: ids })
+    }
+  }, [selectedSessions])
+
+  const bulkStop = useCallback(() => {
+    const ids = Array.from(selectedSessions)
+    if (ids.length === 0) return
+    wsRef.current?.send({ type: 'bulk_stop', sessionIds: ids })
+  }, [selectedSessions])
+
   // Auth screen
   if (connectionState === ConnectionState.AUTH_ERROR || (!password && connectionState === ConnectionState.DISCONNECTED)) {
     return html`<${AuthScreen}
@@ -597,6 +699,13 @@ function App() {
         showArchived=${showArchived}
         setShowArchived=${setShowArchived}
         onOpenSettings=${(project) => setSettingsProject(project)}
+        selectedSessions=${selectedSessions}
+        onToggleSelection=${toggleSessionSelection}
+        onClearSelection=${clearSelection}
+        onBulkArchive=${bulkArchive}
+        onBulkUnarchive=${bulkUnarchive}
+        onBulkDelete=${bulkDelete}
+        onBulkStop=${bulkStop}
       />
 
       <div class="main-content">
@@ -675,6 +784,13 @@ function App() {
           <button class="error-toast-dismiss">×</button>
         </div>
       `}
+
+      ${bulkActionToast && html`
+        <div class="bulk-toast ${bulkActionToast.type}" onClick=${() => setBulkActionToast(null)}>
+          <span class="bulk-toast-message">${bulkActionToast.message}</span>
+          <button class="bulk-toast-dismiss">×</button>
+        </div>
+      `}
     </div>
   `
 }
@@ -745,9 +861,23 @@ function Sidebar({
   setExpandedCounts,
   showArchived,
   setShowArchived,
-  onOpenSettings
+  onOpenSettings,
+  selectedSessions,
+  onToggleSelection,
+  onClearSelection,
+  onBulkArchive,
+  onBulkUnarchive,
+  onBulkDelete,
+  onBulkStop
 }) {
   const projectGroups = groupSessionsByProject(sessions, collapseState, sessionOrder)
+
+  // Compute which actions are applicable based on selected sessions
+  const selectedSessionsList = Array.from(selectedSessions)
+  const selectedSessionsData = selectedSessionsList.map(id => sessions.find(s => s.id === id)).filter(Boolean)
+  const hasNonArchived = selectedSessionsData.some(s => !s.archived)
+  const hasArchived = selectedSessionsData.some(s => s.archived)
+  const hasRunning = selectedSessionsData.some(s => s.status === 'running' || s.status === 'waiting_permission')
 
   const toggleCollapse = (projectPath) => {
     setCollapseState(prev => ({
@@ -791,6 +921,26 @@ function Sidebar({
         <div class="connection-indicator ${connectionState}"></div>
       </div>
       <div class="sidebar-content">
+        ${selectedSessions.size > 0 && html`
+          <div class="selection-action-bar">
+            <div class="selection-info">
+              <span class="selection-count">${selectedSessions.size} selected</span>
+              <button class="selection-clear" onClick=${onClearSelection} title="Clear selection">×</button>
+            </div>
+            <div class="selection-actions">
+              ${hasNonArchived && html`
+                <button class="selection-action-btn" onClick=${onBulkArchive}>Archive</button>
+              `}
+              ${hasArchived && html`
+                <button class="selection-action-btn" onClick=${onBulkUnarchive}>Unarchive</button>
+              `}
+              ${hasRunning && html`
+                <button class="selection-action-btn" onClick=${onBulkStop}>Stop</button>
+              `}
+              <button class="selection-action-btn danger" onClick=${onBulkDelete}>Delete</button>
+            </div>
+          </div>
+        `}
         <button class="btn btn-primary" style="width: 100%; margin-bottom: 12px" onClick=${onNewSession}>
           + New Session
         </button>
@@ -815,6 +965,8 @@ function Sidebar({
               onShowAll=${() => handleShowAll(group.path, group.sessions.length)}
               showArchived=${showArchived[group.path] || false}
               onToggleArchived=${() => handleToggleArchived(group.path)}
+              selectedSessions=${selectedSessions}
+              onToggleSelection=${onToggleSelection}
             />
           `)}
         </div>
@@ -849,7 +1001,9 @@ function ProjectGroup({
   onShowMore,
   onShowAll,
   showArchived,
-  onToggleArchived
+  onToggleArchived,
+  selectedSessions,
+  onToggleSelection
 }) {
   const [dragOverIdx, setDragOverIdx] = useState(null)
   const dragSourceRef = useRef(null)
@@ -904,6 +1058,12 @@ function ProjectGroup({
   const remainingCount = totalActiveSessions - visibleSessions.length
   const archivedCount = group.archivedSessions.length
 
+  // Build list of all visible session IDs for shift-click range selection
+  const allVisibleSessionIds = [
+    ...visibleSessions.map(s => s.id),
+    ...(showArchived ? group.archivedSessions.map(s => s.id) : [])
+  ]
+
   return html`
     <div class="project-group">
       <a
@@ -953,6 +1113,8 @@ function ProjectGroup({
                 draggable=${true}
                 onDragStart=${(e) => handleDragStart(e, session.id, idx)}
                 onDragEnd=${handleDragEnd}
+                isSelected=${selectedSessions.has(session.id)}
+                onToggleSelection=${(e) => onToggleSelection(session.id, e, allVisibleSessionIds)}
               />
             </div>
           `)}
@@ -984,6 +1146,8 @@ function ProjectGroup({
               onDelete=${() => onDeleteSession(session.id)}
               onRename=${(name) => onRenameSession(session.id, name)}
               onRestore=${() => onRestoreSession(session.id, group.path)}
+              isSelected=${selectedSessions.has(session.id)}
+              onToggleSelection=${(e) => onToggleSelection(session.id, e, allVisibleSessionIds)}
             />
           `)}
         </div>
@@ -1006,7 +1170,9 @@ function SessionCard({
   canArchive,
   draggable,
   onDragStart,
-  onDragEnd
+  onDragEnd,
+  isSelected,
+  onToggleSelection
 }) {
   const [showMenu, setShowMenu] = useState(false)
   const [menuPos, setMenuPos] = useState({ x: 0, y: 0 })
@@ -1072,12 +1238,18 @@ function SessionCard({
     onClick()
   }
 
+  const handleCheckboxClick = (e) => {
+    e.stopPropagation()
+    e.preventDefault()
+    onToggleSelection?.(e)
+  }
+
   const isRunning = session.status === 'running' || session.status === 'waiting_permission'
 
   return html`
     <a
       href=${`#/session/${session.id}`}
-      class="session-card ${isActive ? 'active' : ''} ${isArchived ? 'archived' : ''}"
+      class="session-card ${isActive ? 'active' : ''} ${isArchived ? 'archived' : ''} ${isSelected ? 'selected' : ''}"
       onClick=${handleClick}
       onContextMenu=${handleContextMenu}
       draggable=${draggable}
@@ -1085,6 +1257,13 @@ function SessionCard({
       onDragEnd=${onDragEnd}
     >
       <div class="session-card-header">
+        <input
+          type="checkbox"
+          class="session-checkbox"
+          checked=${isSelected}
+          onClick=${handleCheckboxClick}
+          title="Select session"
+        />
         ${isRenaming ? html`
           <input
             type="text"

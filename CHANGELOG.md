@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Multi-Session Selection**: Checkboxes on session cards with shift-click range selection
+- **Bulk Actions**: Archive, unarchive, delete, and stop multiple sessions at once
+- **`/lgtm` Command**: Slash command to update changelog, commit, and push
+- **Beads Integration**: Issue tracking via beads with Claude Code hooks
 - **Session Status**: Visual indicators for active (running/waiting) vs inactive sessions
 - **Stop Button**: Header stop button appears when current session is running
 - **Stop Button**: Sidebar stop icon replaces archive button for running sessions

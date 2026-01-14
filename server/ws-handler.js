@@ -530,6 +530,98 @@ async function handleMessage(ws, message, config, subscribedSessions) {
       break
     }
 
+    case 'bulk_archive': {
+      const { sessionIds } = message
+      const succeeded = []
+      const failed = []
+
+      for (const id of sessionIds) {
+        try {
+          setSessionMeta(id, { archived: true })
+          succeeded.push(id)
+        } catch {
+          failed.push(id)
+        }
+      }
+
+      send(ws, { type: 'bulk_result', action: 'archive', succeeded, failed })
+      break
+    }
+
+    case 'bulk_unarchive': {
+      const { sessionIds } = message
+      const succeeded = []
+      const failed = []
+
+      // Find project paths for each session to touch files
+      const projects = discoverProjects(config.projectsRoot)
+      const sessionToProject = new Map()
+      for (const project of projects) {
+        const sessions = discoverSessions(project.path)
+        for (const session of sessions) {
+          sessionToProject.set(session.id, project.path)
+        }
+      }
+
+      for (const id of sessionIds) {
+        try {
+          setSessionMeta(id, { archived: false })
+          const projectPath = sessionToProject.get(id)
+          if (projectPath) {
+            touchSessionFile(id, projectPath)
+          }
+          succeeded.push(id)
+        } catch {
+          failed.push(id)
+        }
+      }
+
+      send(ws, { type: 'bulk_result', action: 'unarchive', succeeded, failed })
+      break
+    }
+
+    case 'bulk_delete': {
+      const { sessionIds } = message
+      const succeeded = []
+      const failed = []
+
+      for (const id of sessionIds) {
+        try {
+          deleteSessionMeta(id)
+          clearRuntimeStatus(id)
+          succeeded.push(id)
+        } catch {
+          failed.push(id)
+        }
+      }
+
+      send(ws, { type: 'bulk_result', action: 'delete', succeeded, failed })
+      break
+    }
+
+    case 'bulk_stop': {
+      const { sessionIds } = message
+      const succeeded = []
+      const failed = []
+
+      for (const id of sessionIds) {
+        try {
+          const success = interruptQuery(id)
+          if (success) {
+            succeeded.push(id)
+          } else {
+            // Session wasn't running, count as "succeeded" since there's nothing to stop
+            succeeded.push(id)
+          }
+        } catch {
+          failed.push(id)
+        }
+      }
+
+      send(ws, { type: 'bulk_result', action: 'stop', succeeded, failed })
+      break
+    }
+
     case 'read_config': {
       const { projectPath, configType } = message
       if (!projectPath || !configType) {
