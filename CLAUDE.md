@@ -100,6 +100,14 @@ See `public/CLAUDE.md` for component hierarchy and patterns.
 - Clarvis only stores lightweight session index; actual conversation state lives in SDK
 - Single password auth via query param on WebSocket connection
 
+## Browser Debugging
+
+When debugging UI issues in Clarvis:
+
+1. **Use Claude in Chrome** instead of Playwright - it shows what the user actually sees
+2. **Password is in `.env`** - check there for quick auth access
+3. **Use `npm run start` and `npm run restart`** to manage dev server - this ensures expected configs are in place and automatically reloads the page when there are updates
+
 ## Releasing
 
 1. Add changes under `[Unreleased]` in CHANGELOG.md as you work

@@ -216,6 +216,19 @@ body {
   gap: 4px;
 }
 
+/* Session card as link */
+a.session-card {
+  display: block;
+  text-decoration: none;
+  color: inherit;
+}
+
+/* Project header as link */
+a.project-header {
+  text-decoration: none;
+  color: inherit;
+}
+
 .session-card {
   position: relative;
   padding: 12px;
@@ -365,6 +378,28 @@ body {
 .main-header-title {
   font-weight: 500;
   color: var(--text-primary);
+}
+
+.main-header-title.editable {
+  cursor: pointer;
+}
+
+.main-header-title.editable:hover {
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-underline-offset: 4px;
+}
+
+.main-header-title-input {
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--accent-primary);
+  font-size: inherit;
+  font-weight: 500;
+  color: var(--text-primary);
+  padding: 0;
+  outline: none;
+  font-family: inherit;
 }
 
 /* Message stream */
@@ -677,7 +712,6 @@ body {
 .prompt-input-wrapper {
   display: flex;
   gap: 8px;
-  max-width: 900px;
 }
 
 .prompt-input {
@@ -713,7 +747,6 @@ body {
   border: 1px solid var(--border-color);
   border-bottom: none;
   border-radius: var(--radius-md) var(--radius-md) 0 0;
-  max-width: 900px;
 }
 
 .image-preview-container + .prompt-input-wrapper .prompt-input {
@@ -932,6 +965,7 @@ body {
 }
 
 .prompt-input-container .prompt-input {
+  width: 100%;
   background: var(--bg-tertiary);
 }
 

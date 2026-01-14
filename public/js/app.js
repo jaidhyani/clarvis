@@ -358,6 +358,35 @@ function App() {
     }
   }, [])
 
+  // URL routing: handle hash-based session URLs
+  useEffect(() => {
+    const handleHashChange = () => {
+      const hash = location.hash
+      const sessionMatch = hash.match(/^#\/session\/(.+)$/)
+
+      if (sessionMatch && sessions.length > 0) {
+        const sessionId = sessionMatch[1]
+        const session = sessions.find(s => s.id === sessionId)
+        if (session) {
+          if (activeSessionId !== sessionId) {
+            setActiveSessionId(sessionId)
+            wsRef.current?.send({ type: 'get_history', sessionId })
+            wsRef.current?.send({ type: 'get_commands' })
+          }
+        } else {
+          // Session not found - redirect home with message
+          history.replaceState(null, '', '#/')
+          setErrorToast(`Session "${sessionId}" not found`)
+        }
+      }
+    }
+
+    // Handle initial load and hash changes
+    handleHashChange()
+    window.addEventListener('hashchange', handleHashChange)
+    return () => window.removeEventListener('hashchange', handleHashChange)
+  }, [sessions, activeSessionId])
+
   // Send prompt (accepts { text, images } from PromptInput)
   const sendPrompt = useCallback(({ text, images }) => {
     if (!activeSessionId || !wsRef.current) return
@@ -476,6 +505,8 @@ function App() {
         sessions=${sessions}
         activeSessionId=${activeSessionId}
         onSelectSession=${(id) => {
+          // Update URL for browser history navigation
+          history.pushState(null, '', `#/session/${id}`)
           setActiveSessionId(id)
           setSidebarOpen(false)
           // Request history from server (reads from SDK's JSONL files)
@@ -505,6 +536,7 @@ function App() {
           session=${activeSession}
           onMenuClick=${() => setSidebarOpen(!sidebarOpen)}
           connectionState=${connectionState}
+          onRenameSession=${renameSession}
         />
 
         ${activeSession ? html`
@@ -749,15 +781,25 @@ function ProjectGroup({
     onReorder(sessionIds)
   }
 
+  const handleHeaderClick = (e) => {
+    e.preventDefault()
+    onToggleCollapse()
+  }
+
   return html`
     <div class="project-group">
-      <div class="project-header" onClick=${onToggleCollapse}>
+      <a
+        href="#"
+        role="button"
+        class="project-header"
+        onClick=${handleHeaderClick}
+      >
         <span class="project-chevron ${group.collapsed ? '' : 'expanded'}">\u203a</span>
         <span class="project-name">${group.name}</span>
         <span class="project-count">${group.sessions.length}</span>
         <button
           class="project-settings-btn"
-          onClick=${(e) => { e.stopPropagation(); onOpenSettings() }}
+          onClick=${(e) => { e.stopPropagation(); e.preventDefault(); onOpenSettings() }}
           title="Project settings"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -767,10 +809,10 @@ function ProjectGroup({
         </button>
         <button
           class="project-add-btn"
-          onClick=${(e) => { e.stopPropagation(); onQuickAdd() }}
+          onClick=${(e) => { e.stopPropagation(); e.preventDefault(); onQuickAdd() }}
           title="New session in ${group.name}"
         >+</button>
-      </div>
+      </a>
       ${!group.collapsed && html`
         <div class="project-sessions">
           ${group.sessions.map((session, idx) => html`
@@ -826,10 +868,16 @@ function SessionCard({ session, isActive, onClick, onDelete, onRename, draggable
     setShowMenu(false)
   }
 
+  const handleClick = (e) => {
+    e.preventDefault()
+    onClick()
+  }
+
   return html`
-    <div
+    <a
+      href=${`#/session/${session.id}`}
       class="session-card ${isActive ? 'active' : ''}"
-      onClick=${onClick}
+      onClick=${handleClick}
       onContextMenu=${handleContextMenu}
       draggable=${draggable}
       onDragStart=${onDragStart}
@@ -862,18 +910,65 @@ function SessionCard({ session, isActive, onClick, onDelete, onRename, draggable
           <button onClick=${() => setShowMenu(false)}>Cancel</button>
         </div>
       `}
-    </div>
+    </a>
   `
 }
 
 // Main header component
-function MainHeader({ session, onMenuClick, connectionState }) {
+function MainHeader({ session, onMenuClick, connectionState, onRenameSession }) {
+  const [isEditing, setIsEditing] = useState(false)
+  const [editValue, setEditValue] = useState('')
+  const inputRef = useRef(null)
+
+  const startEditing = () => {
+    if (!session) return
+    setEditValue(session.name)
+    setIsEditing(true)
+  }
+
+  useEffect(() => {
+    if (isEditing && inputRef.current) {
+      inputRef.current.focus()
+      inputRef.current.select()
+    }
+  }, [isEditing])
+
+  const handleSave = () => {
+    const trimmed = editValue.trim()
+    if (trimmed && trimmed !== session.name) {
+      onRenameSession(session.id, trimmed)
+    }
+    setIsEditing(false)
+  }
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter') handleSave()
+    if (e.key === 'Escape') setIsEditing(false)
+  }
+
   return html`
     <header class="main-header">
       <button class="btn btn-icon" onClick=${onMenuClick} style="display: none">
         ☰
       </button>
-      <span class="main-header-title">${session?.name || 'No session selected'}</span>
+      ${session && isEditing ? html`
+        <input
+          ref=${inputRef}
+          type="text"
+          class="main-header-title-input"
+          value=${editValue}
+          onInput=${(e) => setEditValue(e.target.value)}
+          onBlur=${handleSave}
+          onKeyDown=${handleKeyDown}
+        />
+      ` : html`
+        <span
+          class="main-header-title ${session ? 'editable' : ''}"
+          onClick=${startEditing}
+        >
+          ${session?.name || 'No session selected'}
+        </span>
+      `}
       <div class="connection-indicator ${connectionState}"></div>
     </header>
   `
