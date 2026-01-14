@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-01-14
+
+### Added
+
+- **Session List**: Show 5 sessions per project by default with "Show more" and "Show all" links
+- **Session List**: Expansion state persists in localStorage per project
+- **Archiving**: Right-click context menu with Archive option (active session cannot be archived)
+- **Archiving**: Archive button on hover for quick access
+- **Archiving**: "Show archived (N)" toggle to reveal archived sessions at 50% opacity
+- **Archiving**: Restore action bumps session to top via file mtime update
+
+### Fixed
+
+- **Context Menu**: Now appears at click position instead of fixed location relative to element
+- **Context Menu**: Dismisses when clicking outside
+
 ## [0.1.3] - 2026-01-14
 
 ### Added

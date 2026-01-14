@@ -1,6 +1,6 @@
 {
   "name": "clarvis",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "Web UI for Claude Agent SDK - multi-session Claude Code management",
   "type": "module",
   "main": "server/index.js",

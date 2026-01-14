@@ -83,32 +83,39 @@ function groupSessionsByProject(sessions, collapseState, sessionOrder) {
         name: projectName,
         path: projectPath,
         sessions: [],
+        archivedSessions: [],
         latestActivity: 0,
         collapsed: collapseState[projectPath] ?? false
       }
     }
-    groups[projectPath].sessions.push(session)
-    groups[projectPath].latestActivity = Math.max(
-      groups[projectPath].latestActivity,
-      session.lastActivity || 0
-    )
+
+    if (session.archived) {
+      groups[projectPath].archivedSessions.push(session)
+    } else {
+      groups[projectPath].sessions.push(session)
+      groups[projectPath].latestActivity = Math.max(
+        groups[projectPath].latestActivity,
+        session.lastActivity || 0
+      )
+    }
   }
 
   // Sort sessions within each project by custom order or default (latest first)
   for (const path of Object.keys(groups)) {
     const customOrder = sessionOrder[path]
-    if (customOrder && customOrder.length > 0) {
-      groups[path].sessions.sort((a, b) => {
+    const sortFn = (a, b) => {
+      if (customOrder && customOrder.length > 0) {
         const aIdx = customOrder.indexOf(a.id)
         const bIdx = customOrder.indexOf(b.id)
         if (aIdx === -1 && bIdx === -1) return (b.lastActivity || 0) - (a.lastActivity || 0)
         if (aIdx === -1) return 1
         if (bIdx === -1) return -1
         return aIdx - bIdx
-      })
-    } else {
-      groups[path].sessions.sort((a, b) => (b.lastActivity || 0) - (a.lastActivity || 0))
+      }
+      return (b.lastActivity || 0) - (a.lastActivity || 0)
     }
+    groups[path].sessions.sort(sortFn)
+    groups[path].archivedSessions.sort((a, b) => (b.lastActivity || 0) - (a.lastActivity || 0))
   }
 
   // Sort projects by latest activity
@@ -121,6 +128,7 @@ function App() {
   const [connectionState, setConnectionState] = useState(ConnectionState.DISCONNECTED)
   const [sessions, setSessions] = useState([])
   const [activeSessionId, setActiveSessionId] = useState(null)
+  const [pendingProject, setPendingProject] = useState(null) // Project for new session (before first query)
   const [messages, setMessages] = useState({}) // sessionId -> messages[]
   const [projects, setProjects] = useState([])
   const [showNewSessionModal, setShowNewSessionModal] = useState(false)
@@ -131,6 +139,8 @@ function App() {
   const [errorToast, setErrorToast] = useState(null)
   const [collapseState, setCollapseState] = useState(() => loadFromStorage('collapse-state', {}))
   const [sessionOrder, setSessionOrder] = useState(() => loadFromStorage('session-order', {}))
+  const [expandedCounts, setExpandedCounts] = useState(() => loadFromStorage('expanded-counts', {}))
+  const [showArchived, setShowArchived] = useState(() => loadFromStorage('show-archived', {}))
   const [lightboxSrc, setLightboxSrc] = useState(null)
   const [settingsProject, setSettingsProject] = useState(null) // { name, path } when settings modal is open
   const [commands, setCommands] = useState([]) // Slash commands from SDK
@@ -148,6 +158,16 @@ function App() {
   useEffect(() => {
     saveToStorage('session-order', sessionOrder)
   }, [sessionOrder])
+
+  // Persist expanded counts changes
+  useEffect(() => {
+    saveToStorage('expanded-counts', expandedCounts)
+  }, [expandedCounts])
+
+  // Persist show archived state changes
+  useEffect(() => {
+    saveToStorage('show-archived', showArchived)
+  }, [showArchived])
 
   // Scroll to bottom when messages change
   useEffect(() => {
@@ -202,10 +222,33 @@ function App() {
         break
 
       case 'query_started':
-        // Subscribe to the session
-        wsRef.current?.send({ type: 'subscribe', sessionId: msg.sessionId })
-        setActiveSessionId(msg.sessionId)
+        // Subscribe to the session if we have one
+        if (msg.sessionId) {
+          wsRef.current?.send({ type: 'subscribe', sessionId: msg.sessionId })
+        }
         break
+
+      case 'session_created': {
+        // SDK created a new session - add to list and set as active
+        const newSession = {
+          id: msg.sessionId,
+          name: pendingProject?.name || 'Untitled',
+          projectPath: msg.projectPath,
+          status: 'running',
+          lastActivity: Date.now()
+        }
+        setSessions(prev => [newSession, ...prev])
+        setActiveSessionId(msg.sessionId)
+        setPendingProject(null)
+        // Move pending messages to the new session
+        setMessages(prev => {
+          const pendingMsgs = prev._pending || []
+          const { _pending, ...rest } = prev
+          return { ...rest, [msg.sessionId]: pendingMsgs }
+        })
+        wsRef.current?.send({ type: 'subscribe', sessionId: msg.sessionId })
+        break
+      }
 
       case 'message': {
         const sdkMsg = msg.message
@@ -258,12 +301,6 @@ function App() {
         ))
         break
 
-      case 'session_sdk_id':
-        // Update local session with SDK session ID for resume support
-        setSessions(prev => prev.map(s =>
-          s.id === msg.sessionId ? { ...s, sdkSessionId: msg.sdkSessionId } : s
-        ))
-        break
 
       case 'permission_request':
         setPermissionRequests(prev => ({
@@ -301,6 +338,18 @@ function App() {
       case 'session_renamed':
         setSessions(prev => prev.map(s =>
           s.id === msg.sessionId ? { ...s, name: msg.name } : s
+        ))
+        break
+
+      case 'session_archived':
+        setSessions(prev => prev.map(s =>
+          s.id === msg.sessionId ? { ...s, archived: true } : s
+        ))
+        break
+
+      case 'session_restored':
+        setSessions(prev => prev.map(s =>
+          s.id === msg.sessionId ? { ...s, archived: false, lastActivity: Date.now() } : s
         ))
         break
 
@@ -370,7 +419,8 @@ function App() {
         if (session) {
           if (activeSessionId !== sessionId) {
             setActiveSessionId(sessionId)
-            wsRef.current?.send({ type: 'get_history', sessionId })
+            setPendingProject(null)
+            wsRef.current?.send({ type: 'get_history', sessionId, projectPath: session.projectPath })
             wsRef.current?.send({ type: 'get_commands' })
           }
         } else {
@@ -389,10 +439,14 @@ function App() {
 
   // Send prompt (accepts { text, images } from PromptInput)
   const sendPrompt = useCallback(({ text, images }) => {
-    if (!activeSessionId || !wsRef.current) return
+    if (!wsRef.current) return
 
-    const session = sessions.find(s => s.id === activeSessionId)
-    if (!session) return
+    // Determine target: existing session or pending new session
+    const session = activeSessionId ? sessions.find(s => s.id === activeSessionId) : null
+    const targetProject = session?.projectPath || pendingProject?.path
+    const targetName = session?.name || pendingProject?.name || 'Untitled'
+
+    if (!targetProject) return
 
     // Build content blocks array (images first per Anthropic recommendation)
     const content = []
@@ -413,10 +467,10 @@ function App() {
     }
 
     // Add user message locally for immediate feedback (marked as pending)
-    // Will be replaced when SDK confirms with the real message (with uuid)
+    const msgSessionId = activeSessionId || '_pending'
     setMessages(prev => ({
       ...prev,
-      [activeSessionId]: [...(prev[activeSessionId] || []), {
+      [msgSessionId]: [...(prev[msgSessionId] || []), {
         type: 'user',
         message: { content },
         _pending: true
@@ -425,41 +479,22 @@ function App() {
 
     wsRef.current.send({
       type: 'query',
-      sessionId: activeSessionId,
+      sessionId: activeSessionId || undefined,
       options: {
         content,
-        cwd: session.projectPath,
-        name: session.name,
-        resume: session.sdkSessionId
+        cwd: targetProject,
+        name: targetName
       }
     })
-  }, [activeSessionId, sessions])
+  }, [activeSessionId, sessions, pendingProject])
 
-  // Start new session
+  // Start new session - just prepare for first query, session created on send
   const startNewSession = useCallback((project) => {
-    const sessionId = Math.random().toString(36).slice(2)
-
-    // Add to local sessions immediately
-    setSessions(prev => [...prev, {
-      id: sessionId,
-      name: project.name,
-      projectPath: project.path,
-      status: 'idle'
-    }])
-
-    setMessages(prev => ({ ...prev, [sessionId]: [] }))
-    setActiveSessionId(sessionId)
+    setActiveSessionId(null)
+    setPendingProject(project)
+    setMessages(prev => ({ ...prev, _pending: [] }))
     setShowNewSessionModal(false)
     setSidebarOpen(false)
-
-    // Create session on server (persists it) and subscribe
-    wsRef.current?.send({
-      type: 'create_session',
-      sessionId,
-      name: project.name,
-      projectPath: project.path
-    })
-    // Fetch commands for this session
     wsRef.current?.send({ type: 'get_commands' })
   }, [])
 
@@ -487,6 +522,16 @@ function App() {
     wsRef.current?.send({ type: 'rename_session', sessionId, name })
   }, [])
 
+  // Archive session
+  const archiveSession = useCallback((sessionId) => {
+    wsRef.current?.send({ type: 'archive_session', sessionId })
+  }, [])
+
+  // Restore session
+  const restoreSession = useCallback((sessionId, projectPath) => {
+    wsRef.current?.send({ type: 'restore_session', sessionId, projectPath })
+  }, [])
+
   // Auth screen
   if (connectionState === ConnectionState.AUTH_ERROR || (!password && connectionState === ConnectionState.DISCONNECTED)) {
     return html`<${AuthScreen}
@@ -496,8 +541,16 @@ function App() {
   }
 
   const activeSession = sessions.find(s => s.id === activeSessionId)
-  const activeMessages = messages[activeSessionId] || []
+  const activeMessages = activeSessionId ? (messages[activeSessionId] || []) : (messages._pending || [])
   const activePermission = permissionRequests[activeSessionId]
+
+  // For display, use activeSession or a synthetic one from pendingProject
+  const displaySession = activeSession || (pendingProject ? {
+    id: '_pending',
+    name: pendingProject.name,
+    projectPath: pendingProject.path,
+    status: 'idle'
+  } : null)
 
   return html`
     <div class="app-layout">
@@ -505,12 +558,15 @@ function App() {
         sessions=${sessions}
         activeSessionId=${activeSessionId}
         onSelectSession=${(id) => {
+          const session = sessions.find(s => s.id === id)
+          if (!session) return
           // Update URL for browser history navigation
           history.pushState(null, '', `#/session/${id}`)
           setActiveSessionId(id)
+          setPendingProject(null)
           setSidebarOpen(false)
           // Request history from server (reads from SDK's JSONL files)
-          wsRef.current?.send({ type: 'get_history', sessionId: id })
+          wsRef.current?.send({ type: 'get_history', sessionId: id, projectPath: session.projectPath })
           // Fetch commands for this session (may vary by project/plugins)
           wsRef.current?.send({ type: 'get_commands' })
         }}
@@ -518,6 +574,8 @@ function App() {
         onQuickAddSession=${startNewSession}
         onDeleteSession=${deleteSession}
         onRenameSession=${renameSession}
+        onArchiveSession=${archiveSession}
+        onRestoreSession=${restoreSession}
         isOpen=${sidebarOpen}
         connectionState=${connectionState}
         onStatusClick=${() => {
@@ -528,22 +586,26 @@ function App() {
         setCollapseState=${setCollapseState}
         sessionOrder=${sessionOrder}
         setSessionOrder=${setSessionOrder}
+        expandedCounts=${expandedCounts}
+        setExpandedCounts=${setExpandedCounts}
+        showArchived=${showArchived}
+        setShowArchived=${setShowArchived}
         onOpenSettings=${(project) => setSettingsProject(project)}
       />
 
       <div class="main-content">
         <${MainHeader}
-          session=${activeSession}
+          session=${displaySession}
           onMenuClick=${() => setSidebarOpen(!sidebarOpen)}
           connectionState=${connectionState}
           onRenameSession=${renameSession}
         />
 
-        ${activeSession ? html`
+        ${displaySession ? html`
           <${MessageStream}
             messages=${activeMessages}
             messagesEndRef=${messagesEndRef}
-            isLoading=${activeSession.status === 'running' && !activePermission}
+            isLoading=${displaySession.status === 'running' && !activePermission}
             onImageClick=${setLightboxSrc}
           />
 
@@ -557,7 +619,7 @@ function App() {
 
           <${PromptInput}
             onSubmit=${sendPrompt}
-            disabled=${activeSession.status === 'running'}
+            disabled=${displaySession.status === 'running'}
             commands=${commands}
             commandsError=${commandsError}
           />
@@ -662,6 +724,8 @@ function Sidebar({
   onQuickAddSession,
   onDeleteSession,
   onRenameSession,
+  onArchiveSession,
+  onRestoreSession,
   isOpen,
   connectionState,
   onStatusClick,
@@ -669,6 +733,10 @@ function Sidebar({
   setCollapseState,
   sessionOrder,
   setSessionOrder,
+  expandedCounts,
+  setExpandedCounts,
+  showArchived,
+  setShowArchived,
   onOpenSettings
 }) {
   const projectGroups = groupSessionsByProject(sessions, collapseState, sessionOrder)
@@ -684,6 +752,27 @@ function Sidebar({
     setSessionOrder(prev => ({
       ...prev,
       [projectPath]: newOrder
+    }))
+  }
+
+  const handleShowMore = (projectPath, currentCount, totalCount) => {
+    setExpandedCounts(prev => ({
+      ...prev,
+      [projectPath]: Math.min((currentCount || 5) + 5, totalCount)
+    }))
+  }
+
+  const handleShowAll = (projectPath, totalCount) => {
+    setExpandedCounts(prev => ({
+      ...prev,
+      [projectPath]: totalCount
+    }))
+  }
+
+  const handleToggleArchived = (projectPath) => {
+    setShowArchived(prev => ({
+      ...prev,
+      [projectPath]: !prev[projectPath]
     }))
   }
 
@@ -706,10 +795,17 @@ function Sidebar({
               onSelectSession=${onSelectSession}
               onDeleteSession=${onDeleteSession}
               onRenameSession=${onRenameSession}
+              onArchiveSession=${onArchiveSession}
+              onRestoreSession=${onRestoreSession}
               onToggleCollapse=${() => toggleCollapse(group.path)}
               onQuickAdd=${() => onQuickAddSession({ name: group.name, path: group.path })}
               onReorder=${(newOrder) => handleReorder(group.path, newOrder)}
               onOpenSettings=${() => onOpenSettings({ name: group.name, path: group.path })}
+              expandedCount=${expandedCounts[group.path] || 5}
+              onShowMore=${() => handleShowMore(group.path, expandedCounts[group.path], group.sessions.length)}
+              onShowAll=${() => handleShowAll(group.path, group.sessions.length)}
+              showArchived=${showArchived[group.path] || false}
+              onToggleArchived=${() => handleToggleArchived(group.path)}
             />
           `)}
         </div>
@@ -733,10 +829,17 @@ function ProjectGroup({
   onSelectSession,
   onDeleteSession,
   onRenameSession,
+  onArchiveSession,
+  onRestoreSession,
   onToggleCollapse,
   onQuickAdd,
   onReorder,
-  onOpenSettings
+  onOpenSettings,
+  expandedCount,
+  onShowMore,
+  onShowAll,
+  showArchived,
+  onToggleArchived
 }) {
   const [dragOverIdx, setDragOverIdx] = useState(null)
   const dragSourceRef = useRef(null)
@@ -786,6 +889,11 @@ function ProjectGroup({
     onToggleCollapse()
   }
 
+  const totalActiveSessions = group.sessions.length
+  const visibleSessions = group.sessions.slice(0, expandedCount)
+  const remainingCount = totalActiveSessions - visibleSessions.length
+  const archivedCount = group.archivedSessions.length
+
   return html`
     <div class="project-group">
       <a
@@ -796,7 +904,7 @@ function ProjectGroup({
       >
         <span class="project-chevron ${group.collapsed ? '' : 'expanded'}">\u203a</span>
         <span class="project-name">${group.name}</span>
-        <span class="project-count">${group.sessions.length}</span>
+        <span class="project-count">${totalActiveSessions}</span>
         <button
           class="project-settings-btn"
           onClick=${(e) => { e.stopPropagation(); e.preventDefault(); onOpenSettings() }}
@@ -815,7 +923,7 @@ function ProjectGroup({
       </a>
       ${!group.collapsed && html`
         <div class="project-sessions">
-          ${group.sessions.map((session, idx) => html`
+          ${visibleSessions.map((session, idx) => html`
             <div
               key=${session.id}
               class="session-drop-zone ${dragOverIdx === idx ? 'drag-over' : ''}"
@@ -829,11 +937,43 @@ function ProjectGroup({
                 onClick=${() => onSelectSession(session.id)}
                 onDelete=${() => onDeleteSession(session.id)}
                 onRename=${(name) => onRenameSession(session.id, name)}
+                onArchive=${() => onArchiveSession(session.id)}
+                canArchive=${session.id !== activeSessionId}
                 draggable=${true}
                 onDragStart=${(e) => handleDragStart(e, session.id, idx)}
                 onDragEnd=${handleDragEnd}
               />
             </div>
+          `)}
+          ${remainingCount > 0 && html`
+            <div class="session-pagination">
+              <button class="show-more-link" onClick=${onShowMore}>
+                Show more (${remainingCount})
+              </button>
+              <button class="show-all-link" onClick=${onShowAll}>
+                Show all
+              </button>
+            </div>
+          `}
+          ${archivedCount > 0 && html`
+            <button
+              class="show-archived-toggle ${showArchived ? 'active' : ''}"
+              onClick=${onToggleArchived}
+            >
+              ${showArchived ? 'Hide' : 'Show'} archived (${archivedCount})
+            </button>
+          `}
+          ${showArchived && group.archivedSessions.map(session => html`
+            <${SessionCard}
+              key=${session.id}
+              session=${session}
+              isActive=${session.id === activeSessionId}
+              isArchived=${true}
+              onClick=${() => onSelectSession(session.id)}
+              onDelete=${() => onDeleteSession(session.id)}
+              onRename=${(name) => onRenameSession(session.id, name)}
+              onRestore=${() => onRestoreSession(session.id, group.path)}
+            />
           `)}
         </div>
       `}
@@ -842,13 +982,42 @@ function ProjectGroup({
 }
 
 // Session card component
-function SessionCard({ session, isActive, onClick, onDelete, onRename, draggable, onDragStart, onDragEnd }) {
+function SessionCard({
+  session,
+  isActive,
+  isArchived,
+  onClick,
+  onDelete,
+  onRename,
+  onArchive,
+  onRestore,
+  canArchive,
+  draggable,
+  onDragStart,
+  onDragEnd
+}) {
   const [showMenu, setShowMenu] = useState(false)
+  const [menuPos, setMenuPos] = useState({ x: 0, y: 0 })
   const [isRenaming, setIsRenaming] = useState(false)
   const [newName, setNewName] = useState(session.name)
+  const menuRef = useRef(null)
+
+  // Close menu when clicking outside
+  useEffect(() => {
+    if (!showMenu) return
+
+    const handleClickOutside = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) {
+        setShowMenu(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [showMenu])
 
   const handleContextMenu = (e) => {
     e.preventDefault()
+    setMenuPos({ x: e.clientX, y: e.clientY })
     setShowMenu(true)
   }
 
@@ -868,6 +1037,18 @@ function SessionCard({ session, isActive, onClick, onDelete, onRename, draggable
     setShowMenu(false)
   }
 
+  const handleArchive = (e) => {
+    e.stopPropagation()
+    onArchive?.()
+    setShowMenu(false)
+  }
+
+  const handleRestore = (e) => {
+    e.stopPropagation()
+    onRestore?.()
+    setShowMenu(false)
+  }
+
   const handleClick = (e) => {
     e.preventDefault()
     onClick()
@@ -876,7 +1057,7 @@ function SessionCard({ session, isActive, onClick, onDelete, onRename, draggable
   return html`
     <a
       href=${`#/session/${session.id}`}
-      class="session-card ${isActive ? 'active' : ''}"
+      class="session-card ${isActive ? 'active' : ''} ${isArchived ? 'archived' : ''}"
       onClick=${handleClick}
       onContextMenu=${handleContextMenu}
       draggable=${draggable}
@@ -898,14 +1079,50 @@ function SessionCard({ session, isActive, onClick, onDelete, onRename, draggable
         ` : html`
           <span class="session-card-name">${session.name}</span>
         `}
+        ${!isArchived && canArchive && html`
+          <button
+            class="session-archive-btn"
+            onClick=${handleArchive}
+            title="Archive session"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 8v13H3V8"></path>
+              <path d="M1 3h22v5H1z"></path>
+              <path d="M10 12h4"></path>
+            </svg>
+          </button>
+        `}
+        ${isArchived && html`
+          <button
+            class="session-restore-btn"
+            onClick=${handleRestore}
+            title="Restore session"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
+              <path d="M3 3v5h5"></path>
+            </svg>
+          </button>
+        `}
         <span class="session-card-status ${session.status}"></span>
       </div>
       ${session.lastMessagePreview && html`
         <div class="session-card-preview">${session.lastMessagePreview}</div>
       `}
       ${showMenu && html`
-        <div class="session-menu" onClick=${(e) => e.stopPropagation()}>
+        <div
+          ref=${menuRef}
+          class="session-menu"
+          style="position: fixed; left: ${menuPos.x}px; top: ${menuPos.y}px;"
+          onClick=${(e) => e.stopPropagation()}
+        >
           <button onClick=${() => { setIsRenaming(true); setShowMenu(false); }}>Rename</button>
+          ${!isArchived && canArchive && html`
+            <button onClick=${handleArchive}>Archive</button>
+          `}
+          ${isArchived && html`
+            <button onClick=${handleRestore}>Restore</button>
+          `}
           <button onClick=${handleDelete} class="danger">Delete</button>
           <button onClick=${() => setShowMenu(false)}>Cancel</button>
         </div>

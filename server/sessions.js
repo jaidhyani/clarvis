@@ -1,9 +1,10 @@
-import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSync } from 'fs'
+import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSync, utimesSync } from 'fs'
 import { homedir } from 'os'
-import { join, dirname } from 'path'
+import { join, dirname, basename } from 'path'
 import { DATA_DIR } from './config.js'
 
-const SESSIONS_PATH = join(DATA_DIR, 'sessions.json')
+const SESSION_META_PATH = join(DATA_DIR, 'session-meta.json')
+const SDK_PROJECTS_DIR = join(homedir(), '.claude', 'projects')
 
 function ensureDir(filePath) {
   const dir = dirname(filePath)
@@ -12,77 +13,108 @@ function ensureDir(filePath) {
   }
 }
 
-function loadSessions() {
-  if (!existsSync(SESSIONS_PATH)) {
+function encodePath(projectPath) {
+  return projectPath.replace(/\//g, '-')
+}
+
+function parseSessionFile(filePath) {
+  try {
+    const content = readFileSync(filePath, 'utf-8')
+    const lines = content.split('\n')
+
+    for (const line of lines) {
+      if (!line) continue
+      try {
+        const record = JSON.parse(line)
+        if (record.type === 'summary') {
+          return { title: record.summary }
+        }
+      } catch {
+        // Skip malformed lines
+      }
+    }
+    return { title: null }
+  } catch {
+    return null
+  }
+}
+
+export function discoverSessions(projectPath) {
+  const encodedPath = encodePath(projectPath)
+  const sdkProjectDir = join(SDK_PROJECTS_DIR, encodedPath)
+
+  if (!existsSync(sdkProjectDir)) {
+    return []
+  }
+
+  try {
+    const entries = readdirSync(sdkProjectDir)
+    const sessions = []
+
+    for (const entry of entries) {
+      if (!entry.endsWith('.jsonl')) continue
+
+      const filePath = join(sdkProjectDir, entry)
+      try {
+        const stat = statSync(filePath)
+        if (!stat.isFile()) continue
+
+        const sessionId = basename(entry, '.jsonl')
+        const parsed = parseSessionFile(filePath)
+
+        sessions.push({
+          id: sessionId,
+          title: parsed?.title || null,
+          projectPath,
+          lastModified: stat.mtimeMs
+        })
+      } catch {
+        // Skip files we can't read
+      }
+    }
+
+    return sessions.sort((a, b) => b.lastModified - a.lastModified)
+  } catch {
+    return []
+  }
+}
+
+export function getSessionMeta() {
+  if (!existsSync(SESSION_META_PATH)) {
     return {}
   }
   try {
-    const content = readFileSync(SESSIONS_PATH, 'utf-8')
+    const content = readFileSync(SESSION_META_PATH, 'utf-8')
     return JSON.parse(content)
   } catch {
     return {}
   }
 }
 
-function saveSessions(sessions) {
-  ensureDir(SESSIONS_PATH)
-  writeFileSync(SESSIONS_PATH, JSON.stringify(sessions, null, 2))
+export function setSessionMeta(sessionId, meta) {
+  const allMeta = getSessionMeta()
+  allMeta[sessionId] = { ...allMeta[sessionId], ...meta }
+  ensureDir(SESSION_META_PATH)
+  writeFileSync(SESSION_META_PATH, JSON.stringify(allMeta, null, 2))
+  return allMeta[sessionId]
 }
 
-export function getAllSessions() {
-  return loadSessions()
-}
-
-export function getSession(sessionId) {
-  const sessions = loadSessions()
-  return sessions[sessionId] || null
-}
-
-export function saveSession(sessionId, data) {
-  const sessions = loadSessions()
-  sessions[sessionId] = {
-    ...data,
-    id: sessionId,
-    lastActivity: Date.now()
-  }
-  saveSessions(sessions)
-  return sessions[sessionId]
-}
-
-export function updateSession(sessionId, updates) {
-  const sessions = loadSessions()
-  if (!sessions[sessionId]) {
-    return null
-  }
-  sessions[sessionId] = {
-    ...sessions[sessionId],
-    ...updates,
-    lastActivity: Date.now()
-  }
-  saveSessions(sessions)
-  return sessions[sessionId]
-}
-
-export function deleteSession(sessionId) {
-  const sessions = loadSessions()
-  if (!sessions[sessionId]) {
-    return false
-  }
-  delete sessions[sessionId]
-  saveSessions(sessions)
+export function deleteSessionMeta(sessionId) {
+  const allMeta = getSessionMeta()
+  if (!allMeta[sessionId]) return false
+  delete allMeta[sessionId]
+  ensureDir(SESSION_META_PATH)
+  writeFileSync(SESSION_META_PATH, JSON.stringify(allMeta, null, 2))
   return true
 }
 
-// Load message history from SDK's JSONL files
-export function loadSessionHistory(session) {
-  if (!session?.sdkSessionId || !session?.projectPath) {
+export function loadSessionHistory(sessionId, projectPath) {
+  if (!sessionId || !projectPath) {
     return []
   }
 
-  // SDK stores sessions in ~/.claude/projects/ with path encoded as directory name
-  const encodedPath = session.projectPath.replace(/\//g, '-')
-  const sdkProjectDir = join(homedir(), '.claude', 'projects', encodedPath)
-  const historyFile = join(sdkProjectDir, `${session.sdkSessionId}.jsonl`)
+  const encodedPath = encodePath(projectPath)
+  const historyFile = join(SDK_PROJECTS_DIR, encodedPath, `${sessionId}.jsonl`)
 
   if (!existsSync(historyFile)) {
     return []
@@ -96,7 +128,6 @@ export function loadSessionHistory(session) {
     for (const line of lines) {
       try {
         const entry = JSON.parse(line)
-        // Only include user and assistant messages, skip queue-operations and other internal types
         if (entry.type === 'user' || entry.type === 'assistant') {
           messages.push(entry)
         }
@@ -141,4 +172,19 @@ export function discoverProjects(projectsRoot) {
   }
 }
 
-export { SESSIONS_PATH }
+export function touchSessionFile(sessionId, projectPath) {
+  const encodedPath = encodePath(projectPath)
+  const filePath = join(SDK_PROJECTS_DIR, encodedPath, `${sessionId}.jsonl`)
+
+  if (!existsSync(filePath)) {
+    return false
+  }
+
+  try {
+    const now = new Date()
+    utimesSync(filePath, now, now)
+    return true
+  } catch {
+    return false
+  }
+}

@@ -315,14 +315,11 @@ a.project-header {
 }
 
 .session-menu {
-  position: absolute;
-  top: 100%;
-  right: 8px;
   background: var(--bg-tertiary);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-md);
-  z-index: 100;
+  z-index: 1000;
   overflow: hidden;
 }
 
@@ -1623,4 +1620,95 @@ label {
 .project-settings-btn:hover {
   background: var(--bg-hover);
   color: var(--text-primary);
+}
+
+/* Session archive/restore buttons */
+.session-archive-btn,
+.session-restore-btn {
+  opacity: 0;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  padding: 4px;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.15s, background 0.15s, color 0.15s;
+  flex-shrink: 0;
+}
+
+.session-card:hover .session-archive-btn,
+.session-card:hover .session-restore-btn {
+  opacity: 1;
+}
+
+.session-archive-btn:hover,
+.session-restore-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+/* Archived session styling */
+a.session-card.archived,
+.session-card.archived {
+  opacity: 0.5;
+}
+
+a.session-card.archived:hover,
+.session-card.archived:hover {
+  opacity: 0.7;
+}
+
+/* Session pagination controls */
+.session-pagination {
+  display: flex;
+  gap: 8px;
+  padding: 8px 12px;
+}
+
+.show-more-link,
+.show-all-link {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 4px 0;
+  transition: color 0.15s;
+}
+
+.show-more-link:hover,
+.show-all-link:hover {
+  color: var(--accent-primary);
+}
+
+.show-all-link {
+  color: var(--text-muted);
+}
+
+/* Show archived toggle */
+.show-archived-toggle {
+  display: block;
+  width: 100%;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 8px 12px;
+  text-align: left;
+  transition: color 0.15s, background 0.15s;
+  border-radius: var(--radius-sm);
+  margin-top: 4px;
+}
+
+.show-archived-toggle:hover {
+  color: var(--text-secondary);
+  background: var(--bg-tertiary);
+}
+
+.show-archived-toggle.active {
+  color: var(--accent-primary);
 }
