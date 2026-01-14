@@ -91,13 +91,7 @@ SDK checks OAuth first, then `ANTHROPIC_API_KEY` env var.
 
 ## Frontend Patterns
 
-All components live in `app.js` (Preact + htm, no JSX, no build step).
-
-State lives in `App()`, passed down via props.
-
-Adding a new modal: follow `NewSessionModal` or `StatusModal` pattern.
-
-Adding a WS message type: add case in `handleMessage` switch.
+See `public/CLAUDE.md` for component hierarchy and patterns.
 
 ## Key Design Decisions
 
