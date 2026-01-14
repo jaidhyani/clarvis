@@ -3,17 +3,20 @@
 ## Commands
 
 ```bash
-./start.sh              # Start server (loads .env from parent dirs)
-npm start               # Start server directly
+npm start               # Start server (loads .env from parent dirs)
 npm run dev             # Start with --watch for auto-reload
-./restart.sh            # Trigger restart (when using npm run dev)
-./restart.sh kill       # Hard kill server process
+npm run restart         # Trigger restart (when using npm run dev)
+npm run stop            # Kill server process
 npm test                # Run tests
 ```
 
 ## Architecture
 
 ```
+scripts/
+├── start.js          # Cross-platform server launcher with PID tracking
+└── restart.js        # Cross-platform restart/stop via PID file
+
 server/
 ├── index.js          # HTTP + WebSocket server entry
 ├── config.js         # Config: CLI > env > file > defaults
@@ -59,6 +62,8 @@ Content blocks follow Anthropic's format:
 
 Session index: `~/.clarvis/sessions.json` (configurable via `CLARVIS_DATA_DIR`)
 
+PID file: `~/.clarvis/clarvis.pid` (auto-cleaned on shutdown)
+
 SDK credentials: `~/.claude/.credentials.json`
 
 SDK checks OAuth first, then `ANTHROPIC_API_KEY` env var.
@@ -87,3 +92,11 @@ Adding a WS message type: add case in `handleMessage` switch.
 - Server passes SDK options through with minimal transformation
 - Clarvis only stores lightweight session index; actual conversation state lives in SDK
 - Single password auth via query param on WebSocket connection
+
+## Releasing
+
+1. Add changes under `[Unreleased]` in CHANGELOG.md as you work
+2. When releasing, move unreleased items to a new version heading with date
+3. Update version in `package.json`
+4. Commit: `git commit -am "Release vX.Y.Z"`
+5. Tag: `git tag -a vX.Y.Z -m "Release description"`

@@ -1,59 +1,26 @@
 # Changelog
 
-## [2.0.0] - In Progress
+All notable changes to this project will be documented in this file.
 
-### Phase 1: Server Core - COMPLETE
+The format is based on [Keep a Changelog](https://keepachangelog.com/),
+and this project adheres to [Semantic Versioning](https://semver.org/).
 
-- **Config system**: CLI args > env vars > config file > defaults
-  - `--port` / `CLARVIS_PORT` / `config.port` (default: 3000)
-  - `--projects-root` / `CLARVIS_PROJECTS_ROOT` / `config.projectsRoot` (default: ~/projects)
-  - Config file: `~/.clarvis/config.json`
+## [Unreleased]
 
-- **Auth**: Password-based authentication
-  - Set via `CLARVIS_PASSWORD` env var
-  - Falls back to random generated password (printed to terminal)
-  - Required for WebSocket connections
+## [0.1.0] - 2025-01-13
 
-- **HTTP server**: Static file serving from `public/`
+### Added
 
-- **WebSocket server**: Full protocol implementation
-  - `query` - Start new SDK query
-  - `resume` - Resume existing session
-  - `interrupt` - Abort running query
-  - `permission` - Respond to permission requests
-  - `list_sessions` / `list_projects`
-  - `get_models` / `get_commands`
-  - `create_project` / `delete_session`
-
-- **SDK bridge**: Thin wrapper around `@anthropic-ai/claude-agent-sdk`
-  - Passthrough options to SDK
-  - Permission callback forwarding to UI
-  - Message streaming to clients
-
-- **Sessions**: Lightweight index in `~/.clarvis/sessions.json`
-  - Auto-discovery of projects in projects root
-  - Session state tracking (idle, running, waiting_permission, error)
-
-### Phase 2: Minimal UI - COMPLETE
-
-- **Preact + htm**: No build step required
-- **WebSocket client**: Auto-reconnect with exponential backoff
-- **Auth screen**: Password entry with error handling
-- **Message stream**: Renders SDK messages
-- **Tool calls**: Collapsible display
-- **Permission cards**: Allow/deny UI
-- **Prompt input**: Auto-resize textarea
-
-### Phase 3: Multi-Session - COMPLETE
-
-- **Session list sidebar**: Shows all sessions with status indicators
-- **Session switching**: Click to switch active session
-- **New session modal**: Project selection and creation
-- **Status indicators**: Visual feedback for session states
-
-### TODO: Phase 4 - Polish
-
-- [ ] Streaming token display (partial messages)
-- [ ] Improved tool call formatting
-- [ ] Mobile responsive layout refinement
-- [ ] Connection status improvements
+- **Server**: HTTP + WebSocket server with password authentication
+- **Config**: CLI args > env vars > config file > defaults hierarchy
+- **SDK integration**: Thin wrapper around `@anthropic-ai/claude-agent-sdk`
+- **Session management**: Multi-session support with persistent index
+- **Project discovery**: Auto-discovery of projects in configurable root directory
+- **Frontend**: Preact + htm UI with no build step
+- **Message rendering**: Markdown support with syntax highlighting for code blocks
+- **Tool calls**: Collapsible display with input/output
+- **Permission UI**: Allow/deny cards for SDK permission requests
+- **Image support**: Upload and paste images into prompts
+- **Auto-reconnect**: WebSocket client with exponential backoff
+- **Status endpoint**: Server health check at `/status`
+- **Cross-platform scripts**: Node.js start/restart/stop via PID file

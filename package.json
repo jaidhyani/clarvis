@@ -1,12 +1,14 @@
 {
   "name": "clarvis",
-  "version": "2.0.0",
+  "version": "0.1.0",
   "description": "Web UI for Claude Agent SDK - multi-session Claude Code management",
   "type": "module",
   "main": "server/index.js",
   "scripts": {
-    "start": "node server/index.js",
-    "dev": "node --watch server/index.js",
+    "start": "node scripts/start.js",
+    "dev": "node scripts/start.js --watch",
+    "restart": "node scripts/restart.js",
+    "stop": "node scripts/restart.js kill",
     "test": "node --test server/**/*.test.js"
   },
   "dependencies": {
