@@ -4,12 +4,42 @@
   "description": "Web UI for Claude Agent SDK - multi-session Claude Code management",
   "type": "module",
   "main": "server/index.js",
+  "bin": {
+    "clarvis": "./scripts/start.js"
+  },
   "scripts": {
     "start": "node scripts/start.js",
     "dev": "node scripts/start.js --watch",
     "restart": "node scripts/restart.js",
     "stop": "node scripts/restart.js kill",
     "test": "node --test server/**/*.test.js"
+  },
+  "files": [
+    "server/",
+    "public/",
+    "scripts/",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "claude",
+    "anthropic",
+    "claude-code",
+    "agent",
+    "ai",
+    "llm",
+    "web-ui",
+    "sdk"
+  ],
+  "author": "Jai Dhyani",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jaidhyani/clarvis.git"
+  },
+  "homepage": "https://github.com/jaidhyani/clarvis#readme",
+  "bugs": {
+    "url": "https://github.com/jaidhyani/clarvis/issues"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.3",

@@ -16,11 +16,31 @@ Web UI for the Claude Agent SDK. Manage multiple Claude Code sessions from your 
 ## Quick Start
 
 ```bash
-npm install
-npm start
+npx clarvis
 ```
 
 Opens at `http://localhost:3000`. Password prints to console on startup.
+
+## Installation
+
+**Run directly (no install):**
+```bash
+npx clarvis
+```
+
+**Install globally:**
+```bash
+npm install -g clarvis
+clarvis
+```
+
+**From source (for development):**
+```bash
+git clone https://github.com/jaidhyani/clarvis.git
+cd clarvis
+npm install
+npm start
+```
 
 ## Configuration
 
@@ -247,9 +267,11 @@ sudo systemctl start caddy
 ### 5. Run Clarvis
 
 ```bash
-cd /path/to/clarvis
-npm install
-npm start
+# Install globally
+npm install -g clarvis
+
+# Run
+clarvis
 ```
 
 For persistence, create a systemd service or use a process manager.
