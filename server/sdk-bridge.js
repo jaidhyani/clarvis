@@ -60,8 +60,22 @@ export function createQueryRunner(sessionId, options, callbacks) {
         pathToClaudeCodeExecutable: process.env.CLAUDE_CODE_PATH || `${process.env.HOME}/.local/bin/claude`
       }
 
-      // Support both content array (with images) and plain prompt string
-      const prompt = options.content || options.prompt
+      // SDK expects prompt as string or AsyncIterable<SDKUserMessage>
+      // Always use AsyncIterable format for consistency (works for both text and images)
+      let prompt
+      if (options.content && Array.isArray(options.content)) {
+        prompt = (async function* () {
+          yield {
+            type: 'user',
+            message: { role: 'user', content: options.content },
+            parent_tool_use_id: null,
+            session_id: options.resume || ''
+          }
+        })()
+      } else {
+        // Legacy string prompt fallback
+        prompt = options.prompt || ''
+      }
 
       const response = query({
         prompt,

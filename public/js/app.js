@@ -399,8 +399,13 @@ function App() {
     setShowNewSessionModal(false)
     setSidebarOpen(false)
 
-    // Subscribe to the session
-    wsRef.current?.send({ type: 'subscribe', sessionId })
+    // Create session on server (persists it) and subscribe
+    wsRef.current?.send({
+      type: 'create_session',
+      sessionId,
+      name: project.name,
+      projectPath: project.path
+    })
   }, [])
 
   // Handle permission response

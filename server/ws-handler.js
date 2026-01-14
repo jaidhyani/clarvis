@@ -152,6 +152,21 @@ async function handleMessage(ws, message, config, subscribedSessions) {
       break
     }
 
+    case 'create_session': {
+      const { sessionId, name, projectPath } = message
+      if (sessionId && projectPath) {
+        saveSession(sessionId, {
+          name: name || 'Untitled',
+          projectPath,
+          status: 'idle'
+        })
+        subscribedSessions.add(sessionId)
+        addConnection(sessionId, ws)
+        send(ws, { type: 'session_created', sessionId })
+      }
+      break
+    }
+
     case 'unsubscribe': {
       const { sessionId } = message
       if (sessionId) {
