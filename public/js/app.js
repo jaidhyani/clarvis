@@ -2,8 +2,10 @@ import { h, render } from 'preact'
 import { useState, useEffect, useCallback, useRef } from 'preact/hooks'
 import htm from 'htm'
 import { marked } from './lib/marked.esm.js'
-import hljs from './lib/highlight.min.js'
 import { createWebSocket } from './ws.js'
+
+// highlight.js loaded via script tag, available as window.hljs
+const hljs = window.hljs
 
 // Bind htm to preact's h function
 const html = htm.bind(h)
