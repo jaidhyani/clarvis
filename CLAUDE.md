@@ -10,6 +10,19 @@ npm run stop            # Kill server process
 npm test                # Run tests
 ```
 
+### Server Scripts
+
+The server uses PID-based process management via `scripts/start.js` and `scripts/restart.js`:
+
+- **start.js**: Launches `server/index.js`, writes PID to `~/.clarvis/clarvis.pid`, auto-cleans on shutdown
+- **restart.js**: Reads PID file to send signals (`kill` to stop, touch file to trigger `--watch` restart)
+
+If the server won't start due to port conflict:
+```bash
+lsof -ti:3000 | xargs -r kill -9   # Force kill whatever is on port 3000
+npm start
+```
+
 ## Architecture
 
 ```
