@@ -131,11 +131,15 @@ export function createQueryRunner(sessionId, options, callbacks) {
       }
       onComplete()
     } catch (error) {
-      console.error('[sdk-bridge] Query error:', error)
-      if (error.name === 'AbortError') {
-        onComplete('interrupted')
-      } else {
+      // Check if this is an abort-related error (can have different names/messages depending on source)
+      const isAbortError = error.name === 'AbortError' ||
+                          error.message?.includes('aborted') ||
+                          error.message?.includes('abort')
+      if (!isAbortError) {
+        console.error('[sdk-bridge] Query error:', error)
         onError(error)
+      } else {
+        onComplete('interrupted')
       }
     } finally {
       queryState.running = false

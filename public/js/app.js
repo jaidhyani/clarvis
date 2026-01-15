@@ -437,7 +437,17 @@ function App() {
     wsRef.current?.send({ type: 'interrupt', sessionId })
   }, [])
 
-  // Toggle session selection
+  // Pause a running session (can be resumed later)
+  const pauseSession = useCallback((sessionId) => {
+    wsRef.current?.send({ type: 'pause', sessionId })
+  }, [])
+
+  // Resume a paused session
+  const resumeSession = useCallback((sessionId, projectPath) => {
+    wsRef.current?.send({ type: 'resume', sessionId, projectPath })
+  }, [])
+
+  // Toggle session selection (handles shift-click range selection)
   const toggleSessionSelection = useCallback((sessionId, event, allVisibleSessions) => {
     setSelectedSessions(prev => {
       const next = new Set(prev)
@@ -548,6 +558,8 @@ function App() {
         onArchiveSession=${archiveSession}
         onRestoreSession=${restoreSession}
         onStopSession=${stopSession}
+        onPauseSession=${pauseSession}
+        onResumeSession=${resumeSession}
         isOpen=${sidebarOpen}
         connectionState=${connectionState}
         onStatusClick=${() => {
@@ -579,6 +591,8 @@ function App() {
           connectionState=${connectionState}
           onRenameSession=${renameSession}
           onStopSession=${stopSession}
+          onPauseSession=${pauseSession}
+          onResumeSession=${resumeSession}
         />
 
         ${displaySession ? html`

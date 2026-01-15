@@ -16,6 +16,8 @@ export function SessionCard({
   onArchive,
   onRestore,
   onStop,
+  onPause,
+  onResume,
   canArchive,
   draggable,
   onDragStart,
@@ -82,6 +84,18 @@ export function SessionCard({
     onStop?.()
   }
 
+  const handlePause = (e) => {
+    e.stopPropagation()
+    e.preventDefault()
+    onPause?.()
+  }
+
+  const handleResume = (e) => {
+    e.stopPropagation()
+    e.preventDefault()
+    onResume?.()
+  }
+
   const handleClick = (e) => {
     e.preventDefault()
     onClick()
@@ -94,6 +108,7 @@ export function SessionCard({
   }
 
   const isRunning = session.status === 'running' || session.status === 'waiting_permission'
+  const isPaused = session.status === 'paused'
 
   return html`
     <a
@@ -176,7 +191,11 @@ export function SessionCard({
           onClick=${(e) => e.stopPropagation()}
         >
           ${isRunning && html`
+            <button onClick=${(e) => { handlePause(e); setShowMenu(false); }}>Pause</button>
             <button onClick=${(e) => { handleStop(e); setShowMenu(false); }} class="danger">Stop</button>
+          `}
+          ${isPaused && html`
+            <button onClick=${(e) => { handleResume(e); setShowMenu(false); }}>Resume</button>
           `}
           <button onClick=${() => { setIsRenaming(true); setShowMenu(false); }}>Rename</button>
           ${!isArchived && !isRunning && canArchive && html`
@@ -203,6 +222,8 @@ export function ProjectGroup({
   onArchiveSession,
   onRestoreSession,
   onStopSession,
+  onPauseSession,
+  onResumeSession,
   onToggleCollapse,
   onQuickAdd,
   onReorder,
@@ -319,6 +340,8 @@ export function ProjectGroup({
                 onRename=${(name) => onRenameSession(session.id, name)}
                 onArchive=${() => onArchiveSession(session.id)}
                 onStop=${() => onStopSession(session.id)}
+                onPause=${() => onPauseSession(session.id)}
+                onResume=${() => onResumeSession(session.id, group.path)}
                 canArchive=${session.id !== activeSessionId}
                 draggable=${true}
                 onDragStart=${(e) => handleDragStart(e, session.id, idx)}
@@ -378,6 +401,8 @@ export function Sidebar({
   onArchiveSession,
   onRestoreSession,
   onStopSession,
+  onPauseSession,
+  onResumeSession,
   isOpen,
   connectionState,
   onStatusClick,
@@ -484,6 +509,8 @@ export function Sidebar({
               onArchiveSession=${onArchiveSession}
               onRestoreSession=${onRestoreSession}
               onStopSession=${onStopSession}
+              onPauseSession=${onPauseSession}
+              onResumeSession=${onResumeSession}
               onToggleCollapse=${() => toggleCollapse(group.path)}
               onQuickAdd=${() => onQuickAddSession({ name: group.name, path: group.path })}
               onReorder=${(newOrder) => handleReorder(group.path, newOrder)}
