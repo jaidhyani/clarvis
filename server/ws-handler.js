@@ -395,6 +395,10 @@ async function handleMessage(ws, message, config, subscribedSessions) {
         },
         onError: (error) => {
           if (activeSessionId) {
+            // Ignore abort errors - these are handled by pause/interrupt handlers
+            const isAbortError = error.name === 'AbortError' || error.message?.includes('aborted')
+            if (isAbortError) return
+
             setRuntimeStatus(activeSessionId, 'error', options.cwd)
             broadcast(activeSessionId, { type: 'error', sessionId: activeSessionId, error: error.message })
             broadcast(activeSessionId, { type: 'session_status', sessionId: activeSessionId, status: 'error' })
@@ -402,9 +406,12 @@ async function handleMessage(ws, message, config, subscribedSessions) {
         },
         onComplete: (reason) => {
           if (activeSessionId) {
-            clearRuntimeStatus(activeSessionId)
             broadcast(activeSessionId, { type: 'query_complete', sessionId: activeSessionId, reason })
-            broadcast(activeSessionId, { type: 'session_status', sessionId: activeSessionId, status: 'idle' })
+            // Don't auto-set status for interrupted queries - let pause/interrupt handlers decide
+            if (reason !== 'interrupted') {
+              clearRuntimeStatus(activeSessionId)
+              broadcast(activeSessionId, { type: 'session_status', sessionId: activeSessionId, status: 'idle' })
+            }
           }
         }
       })
@@ -437,7 +444,88 @@ async function handleMessage(ws, message, config, subscribedSessions) {
     case 'interrupt': {
       const { sessionId } = message
       const success = interruptQuery(sessionId)
+      if (success) {
+        clearRuntimeStatus(sessionId)
+        broadcast(sessionId, { type: 'session_status', sessionId, status: 'idle' })
+      }
       send(ws, { type: 'interrupt_result', sessionId, success })
+      break
+    }
+
+    case 'pause': {
+      const { sessionId } = message
+      const runtime = runtimeStatus.get(sessionId)
+      const success = interruptQuery(sessionId)
+      if (success && runtime) {
+        setRuntimeStatus(sessionId, 'paused', runtime.projectPath)
+        broadcast(sessionId, { type: 'session_status', sessionId, status: 'paused' })
+      }
+      send(ws, { type: 'pause_result', sessionId, success })
+      break
+    }
+
+    case 'resume': {
+      const { sessionId, projectPath } = message
+      if (!sessionId || !projectPath) {
+        send(ws, { type: 'error', error: 'sessionId and projectPath required for resume' })
+        return
+      }
+
+      // Subscribe to the session
+      subscribedSessions.add(sessionId)
+      addConnection(sessionId, ws)
+
+      // Start query with resume option (no new prompt - just continues)
+      createQueryRunner(sessionId, { cwd: projectPath, resume: sessionId }, {
+        onMessage: (sdkMessage) => {
+          if (sdkMessage.type === 'system' && sdkMessage.subtype === 'init') {
+            setRuntimeStatus(sessionId, 'running', projectPath)
+          }
+          broadcast(sessionId, { type: 'message', sessionId, message: sdkMessage })
+        },
+        onPermissionRequest: (request) => {
+          setRuntimeStatus(sessionId, 'waiting_permission', projectPath)
+          broadcast(sessionId, {
+            type: 'permission_request',
+            sessionId,
+            ...request
+          })
+          broadcast(sessionId, { type: 'session_status', sessionId, status: 'waiting_permission' })
+        },
+        onPermissionResolved: (resolution) => {
+          broadcast(sessionId, {
+            type: 'message',
+            sessionId,
+            message: {
+              type: 'permission',
+              toolName: resolution.toolName,
+              input: resolution.input,
+              decision: resolution.decision,
+              decisionMessage: resolution.message
+            }
+          })
+        },
+        onError: (error) => {
+          // Ignore abort errors - these are handled by pause/interrupt handlers
+          const isAbortError = error.name === 'AbortError' || error.message?.includes('aborted')
+          if (isAbortError) return
+
+          setRuntimeStatus(sessionId, 'error', projectPath)
+          broadcast(sessionId, { type: 'error', sessionId, error: error.message })
+          broadcast(sessionId, { type: 'session_status', sessionId, status: 'error' })
+        },
+        onComplete: (reason) => {
+          broadcast(sessionId, { type: 'query_complete', sessionId, reason })
+          if (reason !== 'interrupted') {
+            clearRuntimeStatus(sessionId)
+            broadcast(sessionId, { type: 'session_status', sessionId, status: 'idle' })
+          }
+        }
+      })
+
+      setRuntimeStatus(sessionId, 'running', projectPath)
+      broadcast(sessionId, { type: 'session_status', sessionId, status: 'running' })
+      send(ws, { type: 'resume_started', sessionId })
       break
     }
 

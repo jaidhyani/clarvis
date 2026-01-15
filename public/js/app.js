@@ -566,6 +566,16 @@ function App() {
     wsRef.current?.send({ type: 'interrupt', sessionId })
   }, [])
 
+  // Pause a running session (can be resumed later)
+  const pauseSession = useCallback((sessionId) => {
+    wsRef.current?.send({ type: 'pause', sessionId })
+  }, [])
+
+  // Resume a paused session
+  const resumeSession = useCallback((sessionId, projectPath) => {
+    wsRef.current?.send({ type: 'resume', sessionId, projectPath })
+  }, [])
+
   // Toggle session selection (handles shift-click range selection)
   const toggleSessionSelection = useCallback((sessionId, event, allVisibleSessions) => {
     setSelectedSessions(prev => {
@@ -684,6 +694,8 @@ function App() {
         onArchiveSession=${archiveSession}
         onRestoreSession=${restoreSession}
         onStopSession=${stopSession}
+        onPauseSession=${pauseSession}
+        onResumeSession=${resumeSession}
         isOpen=${sidebarOpen}
         connectionState=${connectionState}
         onStatusClick=${() => {
@@ -715,6 +727,8 @@ function App() {
           connectionState=${connectionState}
           onRenameSession=${renameSession}
           onStopSession=${stopSession}
+          onPauseSession=${pauseSession}
+          onResumeSession=${resumeSession}
         />
 
         ${displaySession ? html`
@@ -850,6 +864,8 @@ function Sidebar({
   onArchiveSession,
   onRestoreSession,
   onStopSession,
+  onPauseSession,
+  onResumeSession,
   isOpen,
   connectionState,
   onStatusClick,
@@ -956,6 +972,8 @@ function Sidebar({
               onArchiveSession=${onArchiveSession}
               onRestoreSession=${onRestoreSession}
               onStopSession=${onStopSession}
+              onPauseSession=${onPauseSession}
+              onResumeSession=${onResumeSession}
               onToggleCollapse=${() => toggleCollapse(group.path)}
               onQuickAdd=${() => onQuickAddSession({ name: group.name, path: group.path })}
               onReorder=${(newOrder) => handleReorder(group.path, newOrder)}
@@ -993,6 +1011,8 @@ function ProjectGroup({
   onArchiveSession,
   onRestoreSession,
   onStopSession,
+  onPauseSession,
+  onResumeSession,
   onToggleCollapse,
   onQuickAdd,
   onReorder,
@@ -1109,6 +1129,8 @@ function ProjectGroup({
                 onRename=${(name) => onRenameSession(session.id, name)}
                 onArchive=${() => onArchiveSession(session.id)}
                 onStop=${() => onStopSession(session.id)}
+                onPause=${() => onPauseSession(session.id)}
+                onResume=${() => onResumeSession(session.id, group.path)}
                 canArchive=${session.id !== activeSessionId}
                 draggable=${true}
                 onDragStart=${(e) => handleDragStart(e, session.id, idx)}
@@ -1167,6 +1189,8 @@ function SessionCard({
   onArchive,
   onRestore,
   onStop,
+  onPause,
+  onResume,
   canArchive,
   draggable,
   onDragStart,
@@ -1233,6 +1257,18 @@ function SessionCard({
     onStop?.()
   }
 
+  const handlePause = (e) => {
+    e.stopPropagation()
+    e.preventDefault()
+    onPause?.()
+  }
+
+  const handleResume = (e) => {
+    e.stopPropagation()
+    e.preventDefault()
+    onResume?.()
+  }
+
   const handleClick = (e) => {
     e.preventDefault()
     onClick()
@@ -1245,6 +1281,7 @@ function SessionCard({
   }
 
   const isRunning = session.status === 'running' || session.status === 'waiting_permission'
+  const isPaused = session.status === 'paused'
 
   return html`
     <a
@@ -1280,6 +1317,16 @@ function SessionCard({
         `}
         ${isRunning && html`
           <button
+            class="session-pause-btn"
+            onClick=${handlePause}
+            title="Pause session"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+              <rect x="6" y="5" width="4" height="14" rx="1" />
+              <rect x="14" y="5" width="4" height="14" rx="1" />
+            </svg>
+          </button>
+          <button
             class="session-stop-btn"
             onClick=${handleStop}
             title="Stop session"
@@ -1289,7 +1336,18 @@ function SessionCard({
             </svg>
           </button>
         `}
-        ${!isArchived && !isRunning && canArchive && html`
+        ${isPaused && html`
+          <button
+            class="session-resume-btn"
+            onClick=${handleResume}
+            title="Resume session"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+              <polygon points="6,4 20,12 6,20" />
+            </svg>
+          </button>
+        `}
+        ${!isArchived && !isRunning && !isPaused && canArchive && html`
           <button
             class="session-archive-btn"
             onClick=${handleArchive}
@@ -1327,10 +1385,14 @@ function SessionCard({
           onClick=${(e) => e.stopPropagation()}
         >
           ${isRunning && html`
+            <button onClick=${(e) => { handlePause(e); setShowMenu(false); }}>Pause</button>
             <button onClick=${(e) => { handleStop(e); setShowMenu(false); }} class="danger">Stop</button>
           `}
+          ${isPaused && html`
+            <button onClick=${(e) => { handleResume(e); setShowMenu(false); }}>Resume</button>
+          `}
           <button onClick=${() => { setIsRenaming(true); setShowMenu(false); }}>Rename</button>
-          ${!isArchived && !isRunning && canArchive && html`
+          ${!isArchived && !isRunning && !isPaused && canArchive && html`
             <button onClick=${handleArchive}>Archive</button>
           `}
           ${isArchived && html`
@@ -1345,7 +1407,7 @@ function SessionCard({
 }
 
 // Main header component
-function MainHeader({ session, onMenuClick, connectionState, onRenameSession, onStopSession }) {
+function MainHeader({ session, onMenuClick, connectionState, onRenameSession, onStopSession, onPauseSession, onResumeSession }) {
   const [isEditing, setIsEditing] = useState(false)
   const [editValue, setEditValue] = useState('')
   const inputRef = useRef(null)
@@ -1377,6 +1439,7 @@ function MainHeader({ session, onMenuClick, connectionState, onRenameSession, on
   }
 
   const isRunning = session?.status === 'running' || session?.status === 'waiting_permission'
+  const isPaused = session?.status === 'paused'
 
   return html`
     <header class="main-header">
@@ -1403,6 +1466,17 @@ function MainHeader({ session, onMenuClick, connectionState, onRenameSession, on
       `}
       ${isRunning && session?.id && session.id !== '_pending' && html`
         <button
+          class="btn btn-pause"
+          onClick=${() => onPauseSession(session.id)}
+          title="Pause this session"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+            <rect x="6" y="5" width="4" height="14" rx="1" />
+            <rect x="14" y="5" width="4" height="14" rx="1" />
+          </svg>
+          Pause
+        </button>
+        <button
           class="btn btn-stop"
           onClick=${() => onStopSession(session.id)}
           title="Stop this session"
@@ -1411,6 +1485,18 @@ function MainHeader({ session, onMenuClick, connectionState, onRenameSession, on
             <rect x="6" y="6" width="12" height="12" rx="1" />
           </svg>
           Stop
+        </button>
+      `}
+      ${isPaused && session?.id && html`
+        <button
+          class="btn btn-resume"
+          onClick=${() => onResumeSession(session.id, session.projectPath)}
+          title="Resume this session"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+            <polygon points="6,4 20,12 6,20" />
+          </svg>
+          Resume
         </button>
       `}
       <div class="connection-indicator ${connectionState}"></div>
