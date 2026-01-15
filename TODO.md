@@ -6,7 +6,7 @@
 
 ## Refactoring
 
-- [ ] Break up large code files into smaller, more modular files
+- [x] Break up large code files into smaller, more modular files
 
 ## Features
 
