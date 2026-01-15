@@ -10,7 +10,7 @@
 
 ## Features
 
-- [ ] Add support for session pause/resume (thin wrapper around closing claude code instance/running --resume)
+- [x] Add support for session pause/resume (thin wrapper around closing claude code instance/running --resume)
 - [x] Multi-select sessions for mass archive/delete
 - [x] Clearer UI for session state
 - [ ] Enable archiving for active sessions (prompt for confirmation)
