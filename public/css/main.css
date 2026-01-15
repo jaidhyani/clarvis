@@ -301,6 +301,11 @@ a.project-header {
   background: var(--accent-error);
 }
 
+.session-card-status.paused {
+  background: var(--accent-primary);
+  opacity: 0.7;
+}
+
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.5; }
@@ -399,8 +404,10 @@ a.project-header {
   font-family: inherit;
 }
 
-/* Header stop button */
-.btn-stop {
+/* Header stop/pause/resume buttons */
+.btn-stop,
+.btn-pause,
+.btn-resume {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -413,8 +420,13 @@ a.project-header {
   font-weight: 500;
   cursor: pointer;
   transition: background 0.15s, color 0.15s;
+  margin-right: 8px;
+}
+
+.btn-stop:first-of-type,
+.btn-pause:first-of-type,
+.btn-resume:first-of-type {
   margin-left: auto;
-  margin-right: 12px;
 }
 
 .btn-stop:hover {
@@ -422,7 +434,29 @@ a.project-header {
   color: white;
 }
 
-.btn-stop svg {
+.btn-pause {
+  border-color: var(--accent-warning);
+  color: var(--accent-warning);
+}
+
+.btn-pause:hover {
+  background: var(--accent-warning);
+  color: white;
+}
+
+.btn-resume {
+  border-color: var(--accent-success);
+  color: var(--accent-success);
+}
+
+.btn-resume:hover {
+  background: var(--accent-success);
+  color: white;
+}
+
+.btn-stop svg,
+.btn-pause svg,
+.btn-resume svg {
   flex-shrink: 0;
 }
 
@@ -1649,10 +1683,12 @@ label {
   color: var(--text-primary);
 }
 
-/* Session archive/restore/stop buttons */
+/* Session archive/restore/stop/pause/resume buttons */
 .session-archive-btn,
 .session-restore-btn,
-.session-stop-btn {
+.session-stop-btn,
+.session-pause-btn,
+.session-resume-btn {
   opacity: 0;
   background: transparent;
   border: none;
@@ -1669,14 +1705,27 @@ label {
 
 .session-card:hover .session-archive-btn,
 .session-card:hover .session-restore-btn,
-.session-card:hover .session-stop-btn {
+.session-card:hover .session-stop-btn,
+.session-card:hover .session-pause-btn,
+.session-card:hover .session-resume-btn {
   opacity: 1;
 }
 
-/* Stop button is always visible for running sessions */
-.session-stop-btn {
+/* Stop and pause buttons always visible for running sessions */
+.session-stop-btn,
+.session-pause-btn {
   opacity: 1;
   color: var(--accent-error);
+}
+
+.session-pause-btn {
+  color: var(--accent-warning);
+}
+
+/* Resume button always visible for paused sessions */
+.session-resume-btn {
+  opacity: 1;
+  color: var(--accent-success);
 }
 
 .session-archive-btn:hover,
@@ -1688,6 +1737,16 @@ label {
 .session-stop-btn:hover {
   background: rgba(239, 68, 68, 0.15);
   color: var(--accent-error);
+}
+
+.session-pause-btn:hover {
+  background: rgba(210, 153, 34, 0.15);
+  color: var(--accent-warning);
+}
+
+.session-resume-btn:hover {
+  background: rgba(63, 185, 80, 0.15);
+  color: var(--accent-success);
 }
 
 /* Archived session styling */
